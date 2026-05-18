@@ -1897,35 +1897,31 @@ function renderHist(){
   const q=(document.getElementById('hsearch')?.value||'').toUpperCase();
   const el=document.getElementById('hlist');
   if(histMode==='visitados'){
-    const filtered=mv.filter(v=>!q||v.medico.toUpperCase().includes(q)||v.ciudad.toUpperCase().includes(q)).sort((a,b)=>b.ts.localeCompare(a.ts));
-    if(!filtered.length){ el.innerHTML='<div class="empty"><div class="empty-ico">📋</div><p>Sin visitas registradas aún.</p></div>'; return; }
-    el.innerHTML=filtered.map(v=>vcardHTML(v,true)).join('');
-    el.querySelectorAll('.clickable-vc').forEach(item=>{
-      item.addEventListener('click',()=>openModal(item.dataset.mnom, item.dataset.hasaud==='true'));
-    });
+    const filtered=mv.filter(v=>!q||(v.medico||v.farmacia||'').toUpperCase().includes(q)||(v.ciudad||'').toUpperCase().includes(q)).sort((a,b)=>b.ts.localeCompare(a.ts));
+    if(!filtered.length){ el.innerHTML='<div class="empty"><div class="empty-ico">📋</div><p>Sin visitas registradas aún en este ciclo.</p></div>'; return; }
+    el.innerHTML=filtered.map(v=>vcardHTML(v,false)).join('');
   } else {
     // Pendientes: panel doctors NOT effectively visited this cycle
     const panel=PANEL[CU]||[];
-    const pending=panel.filter(d=>!cycVisited.has(d.nombre.toUpperCase())&&(!q||d.nombre.toUpperCase().includes(q)||d.ciudad.toUpperCase().includes(q)));
+    if (!panel.length) {
+      el.innerHTML='<div class="empty"><div class="empty-ico">⚠️</div><p>No tienes médicos asignados a tu panel. Contacta al gerente.</p></div>';
+      return;
+    }
+    const pending=panel.filter(d=>!cycVisited.has(d.nombre.toUpperCase())&&(!q||d.nombre.toUpperCase().includes(q)||(d.ciudad||'').toUpperCase().includes(q)));
     if(!pending.length){ el.innerHTML='<div class="empty"><div class="empty-ico">✅</div><p>¡Excelente! Ya visitaste a todos los médicos del panel en este ciclo.</p></div>'; return; }
     el.innerHTML=pending.map(d=>{
-      const ak=Object.keys(AUDIT).find(k=>k.toUpperCase()===d.nombre.toUpperCase());
-      const lastVisit=mv.filter(v=>v.rep===CU&&ef(v)&&v.medico.toUpperCase()===d.nombre.toUpperCase()).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
-      return `<div class="vc clickable-vc" data-mnom="${d.nombre.replace(/"/g,'&quot;')}" data-hasaud="${!!ak}">
+      const lastVisit=mv.filter(v=>v.rep===CU&&ef(v)&&(v.medico||'').toUpperCase()===d.nombre.toUpperCase()).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+      return `<div class="vc">
         <div class="vch">
-          <div><div class="vcname">${d.nombre}</div><div class="vcmeta">${d.especialidad} · ${d.ciudad}</div></div>
+          <div><div class="vcname">${d.nombre}</div><div class="vcmeta">${d.especialidad||''} · ${d.ciudad||''}</div></div>
           <span class="tag ${d.tipo==='CIU'?'tb':'ta'}">${d.tipo}</span>
         </div>
         <div class="tags">
-          ${lastVisit?`<span class="tag tgr">Última visita: ${fmtShort(lastVisit.fecha)}</span>`:'<span class="tag" style="background:#FFF3CD;color:#856404;border:1px solid #FFEAA0">⚠️ Nunca visitado</span>'}
-          ${ak?'<span class="tag tgr">📊 Auditoría</span>':''}
+          ${lastVisit?`<span class="tag tgr">Última visita: ${fmtShort(lastVisit.fecha)}</span>`:'<span class="tag" style="background:#FFF3CD;color:#856404;border:1px solid #FFEAA0">⚠️ Pendiente en este ciclo</span>'}
         </div>
         <div style="font-size:12px;color:var(--t3);margin-top:4px">${d.direccion||''}</div>
       </div>`;
     }).join('');
-    el.querySelectorAll('.clickable-vc').forEach(item=>{
-      item.addEventListener('click',()=>openModal(item.dataset.mnom, item.dataset.hasaud==='true'));
-    });
   }
 }
 
@@ -1948,18 +1944,15 @@ function vcardHTML(v, clickable){
       ${v.comentario?`<div class="vccmt">💬 ${v.comentario}</div>`:''}
     </div>`;
   }
-  // Médico visit card (original)
-  const ak=Object.keys(AUDIT).find(k=>k.toUpperCase()===(v.medico||'').toUpperCase());
-  const ha=!!ak;
-  const prods=v.productos?.length?v.productos.map(p=>`<span class="tag tg">${p}</span>`).join(''):'';
+  // Médico visit card
+  const muestras=Array.isArray(v.muestras)?v.muestras.filter(function(m){return typeof m==='object'&&m.producto;}).map(function(p){return '<span class="tag tg">'+p.producto+(p.cantidad?' ×'+p.cantidad:'')+'</span>';}).join(''):'';
   const tipoTag=v.tipo_panel?`<span class="tag ${v.tipo_panel==='CIU'?'tb':'ta'}">${v.tipo_panel}</span>`:'';
-  const safeNom=(v.medico||'').replace(/"/g,'&quot;');
-  return `<div class="vc${clickable?' clickable-vc':''}" ${clickable?`data-mnom="${safeNom}" data-hasaud="${ha}"`:''}>
+  return `<div class="vc">
     <div class="vch">
       <div><div class="vcname">${v.medico||''}</div><div class="vcmeta">${v.especialidad||''} · ${v.ciudad||''}</div></div>
       <div class="vcdate">${fmtShort(v.fecha)}</div>
     </div>
-    <div class="tags">${tipoTag}<span class="tag ta">${v.tipo||''}</span><span class="tag tb">${v.resultado||''}</span>${prods}${ha?'<span class="tag tgr">📊 Auditoría</span>':''}</div>
+    <div class="tags">${tipoTag}<span class="tag tb">${v.resultado||''}</span>${muestras}</div>
     ${v.comentario?`<div class="vccmt">💬 ${v.comentario}</div>`:''}
   </div>`;
 }
@@ -3506,40 +3499,41 @@ function gerUploadDifareMonthly(input) {
 // ── ABRIR AUDITORIA ────────────────────────
 function abrirAuditoria(){
   if (!CU) { alert('No hay sesión activa.'); return; }
-  // Cache busting agresivo
   var bust = Date.now() + '-' + Math.random().toString(36).substr(2,9);
   var url = 'Auditoria_Panel.html?rep=' + encodeURIComponent(CU) + '&nocache=' + bust;
-  var win = window.open(url, '_blank');
-  if (!win) {
-    alert('⚠️ El navegador bloqueó la ventana emergente. Permite los popups o abre manualmente:\n\n' + url);
-    return;
+  // Truco para iPad Safari: crear anchor y clickearlo (Safari NO bloquea esto)
+  try {
+    var a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('📊 Abriendo Auditoría...');
+  } catch (e) {
+    // Fallback: navegar en misma pestaña
+    window.location.href = url;
   }
-  // Force reload por si el navegador cacheó la versión anterior
-  if (window.location.protocol === 'file:') {
-    setTimeout(function(){
-      try { if (win && !win.closed) win.location.reload(true); } catch(e){}
-    }, 500);
-  }
-  showToast('📊 Abriendo tu panel completo...');
 }
 
 // ── ABRIR FARMACIAS ────────────────────────
 function abrirFarmacias(){
-  // Cache busting agresivo: timestamp + random
   var bust = Date.now() + '-' + Math.random().toString(36).substr(2,9);
   var url = 'biogenet_farmacias.html?nocache=' + bust;
-  var isLocal = window.location.protocol === 'file:';
-  var win = window.open(url, '_blank');
-  if (!win) {
-    alert('⚠️ El navegador bloqueó la ventana emergente. Permite los popups o abre manualmente:\n\n' + url);
-    return;
+  // Truco para iPad Safari: crear anchor y clickearlo
+  try {
+    var a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('🏪 Abriendo Farmacias...');
+  } catch (e) {
+    window.location.href = url;
   }
-  if (isLocal) {
-    setTimeout(function(){
-      try { if (win && !win.closed) win.location.reload(true); } catch(e){}
-    }, 500);
-  }
-  showToast('🏪 Abriendo Farmacias en nueva pestaña...');
 }
 
 </script>
