@@ -1473,21 +1473,44 @@ function doLogin(){
     err.style.color='';
     if (result.msg) alert(result.msg);
     
-    // Validación OK → proceder con login normal
+    // Mostrar mensaje de sincronización mientras descarga ciclo activo y visitas
+    err.style.display='block';
+    err.textContent='🔄 Sincronizando datos del ciclo...';
+    err.style.color='var(--am)';
+    
     CU = user;
+    // ESPERAR el sync para tener CYCLE actualizado ANTES de mostrar la pantalla
     syncFromCloud(user).then(function(added){
-      if (added > 0 && typeof renderHist === 'function') renderHist();
+      // Sync completó (o falló, pero seguimos con lo que haya)
+      err.style.display='none';
+      err.style.color='';
+      
+      show('s-app');
+      const ini = user.split(' ').slice(0,2).map(function(w){return w[0];}).join('');
+      document.getElementById('tname').textContent = user;
+      document.getElementById('tavatar').textContent = ini;
+      const linea = REP_LINEA[user]||'';
+      // CYCLE ya está actualizado en este punto (viene de Supabase)
+      document.getElementById('rep-linea-badge').textContent = (CYCLE?'Ciclo '+CYCLE.num+' · ':'')+(linea||'Sin línea');
+      document.getElementById('prod-linea-label').textContent = '('+linea+')';
+      buildProdChips(linea);
+      buildMatChips();
+      renderHist();
+    }).catch(function(e){
+      // Si falló el sync, mostrar igual con CYCLE local
+      console.warn('Sync inicial falló, continuando con datos locales:', e);
+      err.style.display='none';
+      show('s-app');
+      const ini = user.split(' ').slice(0,2).map(function(w){return w[0];}).join('');
+      document.getElementById('tname').textContent = user;
+      document.getElementById('tavatar').textContent = ini;
+      const linea = REP_LINEA[user]||'';
+      document.getElementById('rep-linea-badge').textContent = (CYCLE?'Ciclo '+CYCLE.num+' · ':'')+(linea||'Sin línea');
+      document.getElementById('prod-linea-label').textContent = '('+linea+')';
+      buildProdChips(linea);
+      buildMatChips();
+      renderHist();
     });
-    show('s-app');
-    const ini = user.split(' ').slice(0,2).map(function(w){return w[0];}).join('');
-    document.getElementById('tname').textContent = user;
-    document.getElementById('tavatar').textContent = ini;
-    const linea = REP_LINEA[user]||'';
-    document.getElementById('rep-linea-badge').textContent = (CYCLE?'Ciclo '+CYCLE.num+' · ':'')+(linea||'Sin línea');
-    document.getElementById('prod-linea-label').textContent = '('+linea+')';
-    buildProdChips(linea);
-    buildMatChips();
-    renderHist();
   });
 }
 function doLogout(){ CU=null; selDoc=null; document.getElementById('luser').value=''; document.getElementById('lpass').value=''; show('s-login'); }
@@ -1879,21 +1902,29 @@ function guardar(){
 
 // ── HISTORIAL VISITADOR ──
 function renderHist(){
-  const mv=visits.filter(v=>v.rep===CU);
-  const today=todayISO(), mes=today.slice(0,7);
+  try {
+  if (!CU) {
+    var elx = document.getElementById('hlist');
+    if (elx) elx.innerHTML = '<div class="empty"><p>Sesión no iniciada.</p></div>';
+    return;
+  }
+  const allRepVisits = visits.filter(v=>v.rep===CU);
+  const cyc=getCycle();
+  // FILTRAR solo visitas del CICLO ACTIVO (cuando hay ciclo definido)
+  const mv = cyc ? allRepVisits.filter(v=>v.fecha>=cyc.ini && v.fecha<=cyc.fin) : allRepVisits;
+  const today=todayISO();
   const ef=v=>!v.noEncontro;
   const hoy=mv.filter(v=>v.fecha===today&&ef(v)).length;
-  const mes_=mv.filter(v=>v.fecha.slice(0,7)===mes&&ef(v)).length;
-  const cyc=getCycle();
-  const cycVisited=new Set(mv.filter(v=>ef(v)&&cyc&&v.fecha>=cyc.ini&&v.fecha<=cyc.fin).map(v=>v.medico.toUpperCase()));
+  const cycVisited=new Set(mv.filter(v=>ef(v)).map(v=>(v.medico||'').toUpperCase()).filter(function(x){return x;}));
   const cycTotal=CU&&PANEL[CU]?PANEL[CU].length:0;
   const cycDoc=cycVisited.size;
   const cycPend=cycTotal-cycDoc;
   const cycPct=cycTotal?Math.round(cycDoc/cycTotal*100):0;
+  const cicloLabel = cyc ? ('Ciclo ' + cyc.num) : 'Total';
   document.getElementById('hist-stats').innerHTML=`
     <div class="sbox"><div class="slbl">Hoy</div><div class="snum">${hoy}</div><div class="ssub">contactos efectivos</div></div>
-    <div class="sbox"><div class="slbl">Ciclo · visitados</div><div class="snum" style="color:var(--g)">${cycDoc}</div><div class="ssub">${cycPct}% de ${cycTotal}</div></div>
-    <div class="sbox"><div class="slbl">Ciclo · pendientes</div><div class="snum" style="color:var(--am)">${cycPend}</div><div class="ssub">sin visitar aún</div></div>`;
+    <div class="sbox"><div class="slbl">${cicloLabel} · visitados</div><div class="snum" style="color:var(--g)">${cycDoc}</div><div class="ssub">${cycPct}% de ${cycTotal}</div></div>
+    <div class="sbox"><div class="slbl">${cicloLabel} · pendientes</div><div class="snum" style="color:var(--am)">${cycPend}</div><div class="ssub">sin visitar aún</div></div>`;
   const q=(document.getElementById('hsearch')?.value||'').toUpperCase();
   const el=document.getElementById('hlist');
   if(histMode==='visitados'){
@@ -1922,6 +1953,11 @@ function renderHist(){
         <div style="font-size:12px;color:var(--t3);margin-top:4px">${d.direccion||''}</div>
       </div>`;
     }).join('');
+  }
+  } catch(err) {
+    console.error('Error en renderHist:', err);
+    var elx = document.getElementById('hlist');
+    if (elx) elx.innerHTML = '<div class="empty"><div class="empty-ico">⚠️</div><p>Error al cargar visitas: ' + err.message + '</p><p style="font-size:11px;color:var(--t3);margin-top:8px">Reporta esto al gerente: ' + err.stack.split('\n')[0] + '</p></div>';
   }
 }
 
@@ -3501,39 +3537,22 @@ function abrirAuditoria(){
   if (!CU) { alert('No hay sesión activa.'); return; }
   var bust = Date.now() + '-' + Math.random().toString(36).substr(2,9);
   var url = 'Auditoria_Panel.html?rep=' + encodeURIComponent(CU) + '&nocache=' + bust;
-  // Truco para iPad Safari: crear anchor y clickearlo (Safari NO bloquea esto)
-  try {
-    var a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('📊 Abriendo Auditoría...');
-  } catch (e) {
-    // Fallback: navegar en misma pestaña
+  showToast('📊 Abriendo Mi Auditoría...');
+  // En iPad Safari, navegar en misma pestaña (es lo más confiable)
+  // El visitador usa el botón "Atrás" del navegador para regresar
+  setTimeout(function(){
     window.location.href = url;
-  }
+  }, 300);
 }
 
 // ── ABRIR FARMACIAS ────────────────────────
 function abrirFarmacias(){
   var bust = Date.now() + '-' + Math.random().toString(36).substr(2,9);
   var url = 'biogenet_farmacias.html?nocache=' + bust;
-  // Truco para iPad Safari: crear anchor y clickearlo
-  try {
-    var a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('🏪 Abriendo Farmacias...');
-  } catch (e) {
+  showToast('🏪 Abriendo Farmacias...');
+  setTimeout(function(){
     window.location.href = url;
-  }
+  }, 300);
 }
 
 </script>
