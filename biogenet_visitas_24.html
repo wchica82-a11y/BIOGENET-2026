@@ -1325,7 +1325,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-05-19-1318';
+const APP_VERSION = '2026-05-19-1437';
 
 async function checkForUpdates() {
   try {
@@ -1488,8 +1488,39 @@ function fmtMes(ym){
   return mo[parseInt(m)-1]+' '+y;
 }
 function todayISO(){
-  const d=new Date();
-  return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');
+  // SIEMPRE usar zona horaria de Ecuador (America/Guayaquil = UTC-5)
+  // Esto asegura que los visitadores puedan registrar hasta las 23:59 hora Ecuador
+  // sin importar la configuración del iPad
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    return fmt.format(new Date()); // "YYYY-MM-DD"
+  } catch(e) {
+    // Fallback si Intl no soporta el timezone: usar offset manual UTC-5
+    const now = new Date();
+    const ec = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+    return ec.getUTCFullYear()+'-'+(ec.getUTCMonth()+1).toString().padStart(2,'0')+'-'+ec.getUTCDate().toString().padStart(2,'0');
+  }
+}
+
+// Helper: obtener timestamp ISO en hora Ecuador (para mostrar al usuario)
+function nowEcuadorISO(){
+  // Para guardar en BD: seguimos usando UTC (estándar)
+  // Pero para mostrar al usuario, esta función da hora local Ecuador
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
+    const parts = fmt.formatToParts(new Date());
+    const get = (t) => parts.find(p=>p.type===t)?.value || '00';
+    return get('year')+'-'+get('month')+'-'+get('day')+' '+get('hour')+':'+get('minute')+':'+get('second');
+  } catch(e) {
+    return new Date().toISOString();
+  }
 }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
 function save(){ localStorage.setItem('bg_v2',JSON.stringify(visits)); }
