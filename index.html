@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Biogenet">
+<title>Biogenet — Cargando...</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:linear-gradient(155deg,#1A5C3A 0%,#0D3020 100%);
+  color:#fff;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  -webkit-tap-highlight-color:transparent;
+}
+.box{text-align:center;padding:2rem 1.5rem;max-width:340px}
+.logo{
+  width:64px;height:64px;background:rgba(255,255,255,.15);
+  border-radius:18px;display:flex;align-items:center;justify-content:center;
+  margin:0 auto 18px;
+}
+.logo svg{width:36px;height:36px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round}
+h1{font-size:24px;font-weight:700;letter-spacing:-.5px;margin-bottom:6px}
+.sub{font-size:13px;opacity:.7;letter-spacing:.05em;text-transform:uppercase;margin-bottom:32px}
+.spinner{
+  border:3px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;
+  width:38px;height:38px;margin:0 auto 16px;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status{font-size:13px;opacity:.6;line-height:1.5;min-height:42px}
+.error{display:none;background:rgba(255,80,80,.2);border:1px solid rgba(255,150,150,.3);border-radius:9px;padding:12px 14px;margin-top:16px;font-size:13px;line-height:1.5}
+.error.show{display:block}
+.manual-btn{
+  display:none;margin-top:14px;padding:11px 22px;
+  background:#fff;color:#0D3020;border:none;border-radius:10px;
+  font-weight:700;font-size:14px;cursor:pointer;
+}
+.manual-btn.show{display:inline-block}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+  </div>
+  <h1>Biogenet</h1>
+  <div class="sub">Sistema de Visitas</div>
+  <div class="spinner" id="spinner"></div>
+  <div class="status" id="status">Cargando última versión...</div>
+  <div class="error" id="error"></div>
+  <button class="manual-btn" id="manual-btn" onclick="manualLoad()">Continuar de todos modos</button>
+</div>
+<script>
+var SUPABASE_URL = 'https://lgefqwfitpgosixmyjab.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxnZWZxd2ZpdHBnb3NpeG15amFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzI2ODQsImV4cCI6MjA5NDQwODY4NH0.3WCJtKl4QCVdKcujEZh4Rgjg1yPxlJPZThskJ6MPu80';
+
+function getDefaultVersion(){
+  // Fallback: fecha actual en formato YYYYMMDD-HH
+  var d = new Date();
+  return d.getFullYear() +
+    String(d.getMonth()+1).padStart(2,'0') +
+    String(d.getDate()).padStart(2,'0') + '-' +
+    String(d.getHours()).padStart(2,'0');
+}
+
+function redirectTo(version){
+  var clean = String(version || '').replace(/[^a-zA-Z0-9\-_]/g,'');
+  var url = 'biogenet_visitas_24.html?v=' + encodeURIComponent(clean);
+  // Usar replace() para no agregar al historial
+  window.location.replace(url);
+}
+
+function manualLoad(){
+  redirectTo(getDefaultVersion());
+}
+
+// Intentar consultar la versión actual en Supabase con timeout de 4 segundos
+var timedOut = false;
+var timeout = setTimeout(function(){
+  timedOut = true;
+  // Si Supabase tarda, redirigir con la versión por defecto
+  document.getElementById('status').textContent = 'Sin conexión — usando versión local';
+  setTimeout(function(){
+    redirectTo(getDefaultVersion());
+  }, 600);
+}, 4000);
+
+fetch(SUPABASE_URL + '/rest/v1/config?key=eq.app_version&select=value', {
+  headers: {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Cache-Control': 'no-cache'
+  }
+}).then(function(r){
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}).then(function(data){
+  if (timedOut) return;
+  clearTimeout(timeout);
+  var version = (data && data[0] && data[0].value) ? data[0].value : getDefaultVersion();
+  // Si value es string JSON con comillas, limpiarlas
+  if (typeof version === 'string') version = version.replace(/^"|"$/g, '');
+  redirectTo(version);
+}).catch(function(err){
+  if (timedOut) return;
+  clearTimeout(timeout);
+  console.warn('No se pudo obtener versión de Supabase:', err.message);
+  document.getElementById('status').textContent = 'Cargando con versión local';
+  setTimeout(function(){
+    redirectTo(getDefaultVersion());
+  }, 400);
+});
+
+// Botón manual aparece después de 6 segundos por si algo se queda colgado
+setTimeout(function(){
+  document.getElementById('manual-btn').classList.add('show');
+}, 6000);
+</script>
+</body>
+</html>
