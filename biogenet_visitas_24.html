@@ -270,7 +270,12 @@ textarea{resize:none;height:88px;line-height:1.5}
         </button>
       </div>
 
-      <!-- Búsqueda médico -->
+      <!-- PROGRESO GPS -->
+      <div class="card" id="card-gps-progress" style="display:none">
+        <div id="gps-progress"></div>
+      </div>
+
+      <!-- Busqueda medico -->
       <div class="card" id="reg-card-med">
         <div class="ctitle">Médico visitado</div>
         <div class="dsearch">
@@ -281,6 +286,11 @@ textarea{resize:none;height:88px;line-height:1.5}
         <div id="seldoc" class="seldoc">
           <div><div class="seldoc-name" id="sel-name">—</div><div class="seldoc-meta" id="sel-meta">—</div></div>
           <button class="clrdoc" onclick="clearDoc()">✕</button>
+        </div>
+        <div id="gps-med" style="display:none;margin-top:10px;padding:11px 12px;background:#F0F7F2;border:1px solid #BFE0CB;border-radius:9px">
+          <div style="font-size:11px;font-weight:700;color:#1A5C3A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">&#128205; Ubicacion GPS <span style="font-weight:500;color:#7A8B80;text-transform:none;letter-spacing:0">&middot; opcional</span></div>
+          <div id="gps-med-status" style="font-size:12px;color:#5A6B60;margin-bottom:8px">Sin capturar</div>
+          <button type="button" id="gps-med-btn" onclick="capturarGPS('medico')" style="width:100%;padding:9px;border-radius:8px;border:1px solid #1A5C3A;background:#fff;color:#1A5C3A;font-weight:700;font-size:12.5px;cursor:pointer;font-family:var(--f)">&#128205; Capturar ubicacion</button>
         </div>
       </div>
 
@@ -295,6 +305,11 @@ textarea{resize:none;height:88px;line-height:1.5}
         <div id="selfarm" class="seldoc">
           <div><div class="seldoc-name" id="sel-farm-name">—</div><div class="seldoc-meta" id="sel-farm-meta">—</div></div>
           <button class="clrdoc" onclick="clearFarm()">✕</button>
+        </div>
+        <div id="gps-farm" style="display:none;margin-top:10px;padding:11px 12px;background:#EAF2FB;border:1px solid #BFD4EC;border-radius:9px">
+          <div style="font-size:11px;font-weight:700;color:#1565C0;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">&#128205; Ubicacion GPS <span style="font-weight:500;color:#7A8B80;text-transform:none;letter-spacing:0">&middot; opcional</span></div>
+          <div id="gps-farm-status" style="font-size:12px;color:#5A6B60;margin-bottom:8px">Sin capturar</div>
+          <button type="button" id="gps-farm-btn" onclick="capturarGPS('farmacia')" style="width:100%;padding:9px;border-radius:8px;border:1px solid #1565C0;background:#fff;color:#1565C0;font-weight:700;font-size:12.5px;cursor:pointer;font-family:var(--f)">&#128205; Capturar ubicacion</button>
         </div>
       </div>
 
@@ -397,6 +412,9 @@ textarea{resize:none;height:88px;line-height:1.5}
     </div>
     <div class="tab" data-tab="g-muestras" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2v-4M9 21H5a2 2 0 01-2-2v-4m0 0h18"/></svg>Muestras
+    </div>
+    <div class="tab" data-tab="g-gps" onclick="swTab(this,'ger-tabs','s-ger')">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>Ubicaciones
     </div>
     <div class="tab" data-tab="g-pend" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Pendientes
@@ -782,6 +800,35 @@ textarea{resize:none;height:88px;line-height:1.5}
       </div>
 
       </div>
+
+      <!-- UBICACIONES GPS -->
+      <div id="g-gps" class="panel">
+        <div class="card">
+          <div class="ctitle">&#128205; Cobertura de ubicaciones GPS</div>
+          <p style="font-size:12px;color:var(--t3);margin:.2rem 0 .6rem">Avance de geolocalizacion del panel por representante.</p>
+          <div id="gps-coverage"></div>
+        </div>
+        <div class="card">
+          <div class="ctitle">&#128506;&#65039; Planificador de revisitas</div>
+          <p style="font-size:12px;color:var(--t3);margin:.2rem 0 .6rem">Filtra, marca los puntos que quieras visitar y genera la ruta. Puedes mezclar medicos y farmacias de cualquier representante.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:.6rem">
+            <select id="gps-f-tipo" onchange="renderGpsList()" style="flex:1;min-width:120px;padding:8px;border-radius:8px;border:1px solid #cbd5d0;font-family:var(--f);font-size:13px">
+              <option value="">Todos los tipos</option>
+              <option value="medico">Solo medicos</option>
+              <option value="farmacia">Solo farmacias</option>
+            </select>
+            <select id="gps-f-rep" onchange="renderGpsList()" style="flex:1;min-width:120px;padding:8px;border-radius:8px;border:1px solid #cbd5d0;font-family:var(--f);font-size:13px"><option value="">Todos los representantes</option></select>
+            <select id="gps-f-ciudad" onchange="renderGpsList()" style="flex:1;min-width:120px;padding:8px;border-radius:8px;border:1px solid #cbd5d0;font-family:var(--f);font-size:13px"><option value="">Todas las ciudades</option></select>
+          </div>
+          <input type="text" id="gps-f-q" oninput="renderGpsList()" placeholder="Buscar por nombre..." style="width:100%;padding:8px;border-radius:8px;border:1px solid #cbd5d0;font-family:var(--f);font-size:13px;margin-bottom:.6rem">
+          <div id="gps-sel-info" style="font-size:12px;color:#1A5C3A;font-weight:700;margin-bottom:.5rem">0 seleccionados</div>
+          <div style="display:flex;gap:8px;margin-bottom:.7rem">
+            <button onclick="gpsGenerarRuta()" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--g);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--f)">&#128506;&#65039; Generar ruta</button>
+            <button onclick="gpsExportar()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--g);background:#fff;color:var(--g);font-weight:700;font-size:13px;cursor:pointer;font-family:var(--f)">&#11015;&#65039; Exportar Excel</button>
+          </div>
+          <div id="gps-list" style="max-height:440px;overflow:auto;border:1px solid #eef2ef;border-radius:8px"></div>
+        </div>
+      </div>
     </div>
 
 
@@ -1022,6 +1069,9 @@ async function syncFromCloud(user){
       String(since.getDate()).padStart(2,'0');
     var remoteVisits = await pullVisitsFromCloud(rep, sinceStr);
     var added = mergeRemoteVisits(remoteVisits);
+    // 4. Descargar ubicaciones GPS
+    try { await loadUbicaciones(rep); renderGpsProgress(); await retryUbicPending(); }
+    catch(e){ console.warn('Sync ubicaciones fallo:', e.message); }
     setSyncStatus('online');
     // Reintenta pendientes
     if (getPendingSync().length > 0) await retryPendingSync();
@@ -1325,7 +1375,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-05-19-175855';
+const APP_VERSION = '2026-05-21-173332';
 
 async function checkForUpdates() {
   try {
@@ -1620,6 +1670,7 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-ciclo'){ renderCycleInfo(); renderMatAdmin(); }
   if(el.dataset.tab==='g-muestras'){ initMuestrasMes(); renderMuestras(); }
   if(el.dataset.tab==='g-pend'){ initGPendSelects(); renderGPend(); }
+  if(el.dataset.tab==='g-gps') renderGpsPanel();
 }
 
 // ── PRODUCT CHIPS ──
@@ -1749,8 +1800,9 @@ function selectDoc(nombre){
   document.getElementById('sel-meta').textContent=
     (doc.tipo?'['+doc.tipo+'] ':'')+doc.especialidad+' · '+doc.ciudad+(doc.direccion?' · '+doc.direccion:'');
   document.getElementById('seldoc').classList.add('show');
+  try{gpsOnSelect('medico');}catch(e){}
 }
-function clearDoc(){ selDoc=null; document.getElementById('seldoc').classList.remove('show'); document.getElementById('dsearch').value=''; }
+function clearDoc(){ selDoc=null; document.getElementById('seldoc').classList.remove('show'); document.getElementById('dsearch').value=''; try{gpsOnClear('medico');}catch(e){} }
 document.addEventListener('click', e=>{ if(!e.target.closest('#t-reg .card')) document.getElementById('dlist').classList.remove('open'); });
 
 // ── GUARDAR ──
@@ -1885,11 +1937,13 @@ function selectFarm(cod) {
     farm.cadena + ' · ' + farm.ciudad + (farm.zona ? ' · ' + farm.zona : '') +
     (farm.dir ? '\n' + farm.dir : '');
   document.getElementById('selfarm').classList.add('show');
+  try{gpsOnSelect('farmacia');}catch(e){}
 }
 
 function clearFarm() {
   selFarm = null;
   document.getElementById('selfarm').classList.remove('show');
+  try{gpsOnClear('farmacia');}catch(e){}
   var fi = document.getElementById('fsearch');
   if (fi) fi.value = '';
   var fl = document.getElementById('flist');
@@ -3646,6 +3700,344 @@ function abrirFarmacias(){
   setTimeout(function(){
     window.location.href = url;
   }, 300);
+}
+
+// ===========================================================
+// UBICACIONES GPS - captura y planificador de rutas
+// ===========================================================
+var UBIC_CACHE = {};
+var GPS_TEMP = { medico:null, farmacia:null };
+var GPS_SEL = {};
+var GPS_LIST_CACHE = [];
+
+function ubicKey(tipo, refId){ return tipo + ':' + refId; }
+function medRefId(rep, nombre){ return rep + '||' + nombre; }
+
+function saveUbicLocal(){ try{ localStorage.setItem('bg_ubic_cache', JSON.stringify(UBIC_CACHE)); }catch(e){} }
+(function(){ try{ var c=localStorage.getItem('bg_ubic_cache'); if(c) UBIC_CACHE=JSON.parse(c)||{}; }catch(e){ UBIC_CACHE={}; } })();
+
+function getUbicPending(){ try{ return JSON.parse(localStorage.getItem('bg_ubic_pending')||'[]'); }catch(e){ return []; } }
+function setUbicPending(a){ try{ localStorage.setItem('bg_ubic_pending', JSON.stringify(a)); }catch(e){} }
+
+async function loadUbicaciones(rep){
+  var path = '/ubicaciones?select=*';
+  if (rep) path += '&rep=eq.' + encodeURIComponent(rep);
+  var rows = await sbRequest('GET', path);
+  if (Array.isArray(rows)){
+    rows.forEach(function(r){ UBIC_CACHE[ubicKey(r.tipo, r.ref_id)] = r; });
+    saveUbicLocal();
+  }
+  return rows;
+}
+
+async function pushUbicacion(payload){
+  var r = await fetch(SUPABASE_URL + '/rest/v1/ubicaciones?on_conflict=tipo,ref_id', {
+    method:'POST',
+    headers:{ 'apikey':SUPABASE_KEY, 'Authorization':'Bearer '+SUPABASE_KEY,
+              'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+
+async function retryUbicPending(){
+  var pend = getUbicPending();
+  if (!pend.length) return;
+  var rest = [];
+  for (var i=0;i<pend.length;i++){
+    try { await pushUbicacion(pend[i]); }
+    catch(e){ rest.push(pend[i]); }
+  }
+  setUbicPending(rest);
+}
+
+function capturarGPS(tipo){
+  var suf = tipo==='medico' ? 'med' : 'farm';
+  var btn = document.getElementById('gps-'+suf+'-btn');
+  var st  = document.getElementById('gps-'+suf+'-status');
+  if (!navigator.geolocation){ st.textContent='No disponible: este dispositivo no soporta GPS'; st.style.color='#C0392B'; return; }
+  btn.disabled = true;
+  st.textContent = 'Obteniendo ubicacion... manten el iPad quieto unos segundos';
+  st.style.color = '#1565C0';
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var lat=pos.coords.latitude, lng=pos.coords.longitude, acc=pos.coords.accuracy||0;
+    GPS_TEMP[tipo] = { lat:lat, lng:lng, acc:acc };
+    st.textContent = 'Ubicacion capturada (precision +/- '+Math.round(acc)+' m)';
+    st.style.color = '#1A5C3A';
+    btn.disabled = false;
+    btn.textContent = '\u{1F4CD} Volver a capturar';
+    guardarUbicacion(tipo);
+    if (typeof showToast==='function') showToast('\u{1F4CD} Ubicacion guardada');
+  }, function(err){
+    btn.disabled = false;
+    var msg = err.code===1 ? 'permiso de ubicacion denegado' :
+              err.code===3 ? 'tiempo agotado, intenta de nuevo' : 'sin senal GPS';
+    st.textContent = 'No se pudo obtener - ' + msg;
+    st.style.color = '#C0392B';
+  }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
+}
+
+function guardarUbicacion(tipo){
+  var payload, refId;
+  if (tipo==='medico'){
+    if (!selDoc || !GPS_TEMP.medico) return;
+    refId = medRefId(CU, selDoc.nombre);
+    payload = { tipo:'medico', ref_id:refId, nombre:selDoc.nombre, rep:CU,
+      ciudad:selDoc.ciudad||null, especialidad:selDoc.especialidad||null,
+      cadena:null, direccion:selDoc.direccion||null,
+      lat:GPS_TEMP.medico.lat, lng:GPS_TEMP.medico.lng,
+      precision_m:Math.round(GPS_TEMP.medico.acc), capturado_por:CU,
+      fecha:new Date().toISOString() };
+  } else {
+    if (!selFarm || !GPS_TEMP.farmacia) return;
+    refId = String(selFarm.cod);
+    payload = { tipo:'farmacia', ref_id:refId, nombre:selFarm.pdv, rep:CU,
+      ciudad:selFarm.ciudad||null, especialidad:null,
+      cadena:selFarm.cadena||null, direccion:selFarm.dir||null,
+      lat:GPS_TEMP.farmacia.lat, lng:GPS_TEMP.farmacia.lng,
+      precision_m:Math.round(GPS_TEMP.farmacia.acc), capturado_por:CU,
+      fecha:new Date().toISOString() };
+  }
+  UBIC_CACHE[ubicKey(tipo,refId)] = payload;
+  saveUbicLocal();
+  renderGpsProgress();
+  pushUbicacion(payload).then(function(){
+    retryUbicPending();
+  }).catch(function(){
+    var pend = getUbicPending();
+    pend = pend.filter(function(p){ return !(p.tipo===payload.tipo && p.ref_id===payload.ref_id); });
+    pend.push(payload);
+    setUbicPending(pend);
+  });
+}
+
+function gpsOnSelect(tipo){
+  var suf = tipo==='medico' ? 'med' : 'farm';
+  var box = document.getElementById('gps-'+suf);
+  var st  = document.getElementById('gps-'+suf+'-status');
+  var btn = document.getElementById('gps-'+suf+'-btn');
+  if (!box) return;
+  GPS_TEMP[tipo] = null;
+  var refId = tipo==='medico'
+    ? (selDoc ? medRefId(CU, selDoc.nombre) : null)
+    : (selFarm ? String(selFarm.cod) : null);
+  var existing = refId ? UBIC_CACHE[ubicKey(tipo,refId)] : null;
+  box.style.display = '';
+  btn.disabled = false;
+  if (existing){
+    st.textContent = 'Ya tiene ubicacion registrada (+/- '+(existing.precision_m||'?')+' m). Puedes recapturar para mejorarla.';
+    st.style.color = '#1A5C3A';
+    btn.textContent = '\u{1F4CD} Volver a capturar';
+  } else {
+    st.textContent = 'Sin capturar - pulsa el boton estando en el consultorio/farmacia.';
+    st.style.color = '#5A6B60';
+    btn.textContent = '\u{1F4CD} Capturar ubicacion';
+  }
+}
+
+function gpsOnClear(tipo){
+  var suf = tipo==='medico' ? 'med' : 'farm';
+  var box = document.getElementById('gps-'+suf);
+  if (box) box.style.display = 'none';
+  GPS_TEMP[tipo] = null;
+}
+
+function gpsBar(label, cap, tot, pct, color){
+  return '<div style="margin-bottom:6px">' +
+    '<div style="display:flex;justify-content:space-between;font-size:12px;color:#5A6B60;margin-bottom:2px">' +
+    '<span>'+label+'</span><span style="font-weight:700;color:'+color+'">'+cap+' / '+tot+'</span></div>' +
+    '<div style="height:7px;background:#E3ECE6;border-radius:4px;overflow:hidden">' +
+    '<div style="height:100%;width:'+pct+'%;background:'+color+'"></div></div></div>';
+}
+
+function renderGpsProgress(){
+  var el = document.getElementById('gps-progress');
+  var card = document.getElementById('card-gps-progress');
+  if (!el || typeof CU==='undefined' || !CU) return;
+  var panel = (typeof PANEL!=='undefined' && PANEL[CU]) ? PANEL[CU] : [];
+  var fkey = (typeof farmPanelKey==='function') ? farmPanelKey(CU) : CU;
+  var fpanel = (typeof FARM_PANEL!=='undefined' && FARM_PANEL[fkey]) ? FARM_PANEL[fkey] : [];
+  var medCap=0, farmCap=0;
+  panel.forEach(function(d){ if(UBIC_CACHE[ubicKey('medico',medRefId(CU,d.nombre))]) medCap++; });
+  fpanel.forEach(function(f){ if(UBIC_CACHE[ubicKey('farmacia',String(f.cod))]) farmCap++; });
+  var medTot=panel.length, farmTot=fpanel.length;
+  if (medTot+farmTot===0){ if(card) card.style.display='none'; return; }
+  if (card) card.style.display='';
+  var medPct = medTot? Math.round(medCap/medTot*100):0;
+  var farmPct = farmTot? Math.round(farmCap/farmTot*100):0;
+  el.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:#1A5C3A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">\u{1F4CD} Ubicaciones GPS capturadas</div>' +
+    (medTot ? gpsBar('Medicos', medCap, medTot, medPct, '#1A5C3A') : '') +
+    (farmTot ? gpsBar('Farmacias', farmCap, farmTot, farmPct, '#1565C0') : '');
+}
+
+// ---- Panel gerencial ----
+function gpsAllUbic(){
+  return Object.keys(UBIC_CACHE).map(function(k){ return UBIC_CACHE[k]; })
+    .filter(function(u){ return u && typeof u.lat==='number' && typeof u.lng==='number'; });
+}
+
+function renderGpsPanel(){
+  var info = document.getElementById('gps-coverage');
+  if (info) info.innerHTML = '<p style="font-size:12px;color:var(--t3)">Cargando ubicaciones...</p>';
+  loadUbicaciones(null).then(function(){
+    buildGpsFilters(); renderGpsCoverage(); renderGpsList();
+  }).catch(function(){
+    buildGpsFilters(); renderGpsCoverage(); renderGpsList();
+  });
+}
+
+function renderGpsCoverage(){
+  var el = document.getElementById('gps-coverage'); if(!el) return;
+  var reps = Object.keys(PANEL).sort();
+  var ub = gpsAllUbic();
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+    '<thead><tr style="text-align:left;color:var(--t3)">' +
+    '<th style="padding:5px 4px">Representante</th><th style="padding:5px 4px">Medicos</th>' +
+    '<th style="padding:5px 4px">Farmacias</th><th style="padding:5px 4px">Avance</th></tr></thead><tbody>';
+  reps.forEach(function(rep){
+    var medTot = (PANEL[rep]||[]).length;
+    var fk = farmPanelKey(rep);
+    var farmTot = (FARM_PANEL[fk]||[]).length;
+    var medCap = ub.filter(function(u){ return u.tipo==='medico' && u.rep===rep; }).length;
+    var farmCap = ub.filter(function(u){ return u.tipo==='farmacia' && u.rep===rep; }).length;
+    var tot = medTot+farmTot, cap = medCap+farmCap;
+    var pct = tot? Math.round(cap/tot*100):0;
+    var col = pct>=80?'#1A5C3A':pct>=40?'#C47A0A':'#C0392B';
+    html += '<tr style="border-top:1px solid #eef2ef">' +
+      '<td style="padding:6px 4px;font-weight:600">'+rep+'</td>' +
+      '<td style="padding:6px 4px">'+medCap+'/'+medTot+'</td>' +
+      '<td style="padding:6px 4px">'+farmCap+'/'+farmTot+'</td>' +
+      '<td style="padding:6px 4px;font-weight:700;color:'+col+'">'+pct+'%</td></tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function buildGpsFilters(){
+  var ub = gpsAllUbic();
+  var repSel = document.getElementById('gps-f-rep');
+  var citySel = document.getElementById('gps-f-ciudad');
+  if (repSel){
+    var cur = repSel.value;
+    var reps = {}; ub.forEach(function(u){ if(u.rep) reps[u.rep]=1; });
+    repSel.innerHTML = '<option value="">Todos los representantes</option>' +
+      Object.keys(reps).sort().map(function(r){ return '<option value="'+r+'">'+r+'</option>'; }).join('');
+    repSel.value = cur;
+  }
+  if (citySel){
+    var cur2 = citySel.value;
+    var cities = {}; ub.forEach(function(u){ if(u.ciudad) cities[u.ciudad]=1; });
+    citySel.innerHTML = '<option value="">Todas las ciudades</option>' +
+      Object.keys(cities).sort().map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join('');
+    citySel.value = cur2;
+  }
+}
+
+function gpsFilteredList(){
+  var t = (document.getElementById('gps-f-tipo')||{}).value || '';
+  var rep = (document.getElementById('gps-f-rep')||{}).value || '';
+  var city = (document.getElementById('gps-f-ciudad')||{}).value || '';
+  var q = ((document.getElementById('gps-f-q')||{}).value || '').toUpperCase();
+  return gpsAllUbic().filter(function(u){
+    if (t && u.tipo!==t) return false;
+    if (rep && u.rep!==rep) return false;
+    if (city && u.ciudad!==city) return false;
+    if (q && (u.nombre||'').toUpperCase().indexOf(q)<0) return false;
+    return true;
+  }).sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||''); });
+}
+
+function renderGpsList(){
+  var el = document.getElementById('gps-list'); if(!el) return;
+  var list = gpsFilteredList();
+  GPS_LIST_CACHE = list;
+  if (!list.length){
+    el.innerHTML = '<p style="font-size:12px;color:var(--t3);padding:10px">No hay ubicaciones que coincidan con el filtro.</p>';
+    updateGpsSelInfo(); return;
+  }
+  el.innerHTML = list.map(function(u,idx){
+    var k = ubicKey(u.tipo,u.ref_id);
+    var checked = GPS_SEL[k]?'checked':'';
+    var icon = u.tipo==='medico'?'\u{1F468}‍⚕️':'\u{1F3EA}';
+    var meta = [(u.tipo==='medico'?u.especialidad:u.cadena), u.ciudad, u.rep].filter(Boolean).join(' · ');
+    return '<label style="display:flex;align-items:center;gap:9px;padding:8px 8px;border-bottom:1px solid #eef2ef;cursor:pointer">' +
+      '<input type="checkbox" '+checked+' onchange="gpsToggle('+idx+')" style="width:17px;height:17px;flex:0 0 auto">' +
+      '<span style="flex:1"><span style="font-weight:600;font-size:13px">'+icon+' '+(u.nombre||'')+'</span>' +
+      '<br><span style="font-size:11px;color:var(--t3)">'+meta+'</span></span></label>';
+  }).join('');
+  updateGpsSelInfo();
+}
+
+function gpsToggle(idx){
+  var u = GPS_LIST_CACHE[idx]; if(!u) return;
+  var k = ubicKey(u.tipo,u.ref_id);
+  if (GPS_SEL[k]) delete GPS_SEL[k]; else GPS_SEL[k]=u;
+  updateGpsSelInfo();
+}
+
+function updateGpsSelInfo(){
+  var n = Object.keys(GPS_SEL).length;
+  var el = document.getElementById('gps-sel-info');
+  if (el) el.textContent = n + ' seleccionado' + (n===1?'':'s');
+}
+
+function gpsDist(a,b){ var dx=a.lat-b.lat, dy=a.lng-b.lng; return Math.sqrt(dx*dx+dy*dy); }
+
+function gpsOptimize(pts){
+  if (pts.length<=2) return pts.slice();
+  var remaining = pts.slice();
+  var route = [remaining.shift()];
+  while (remaining.length){
+    var last = route[route.length-1];
+    var bi=0, bd=Infinity;
+    for (var i=0;i<remaining.length;i++){
+      var d=gpsDist(last,remaining[i]); if(d<bd){bd=d;bi=i;}
+    }
+    route.push(remaining.splice(bi,1)[0]);
+  }
+  return route;
+}
+
+function gpsGenerarRuta(){
+  var pts = Object.keys(GPS_SEL).map(function(k){ return GPS_SEL[k]; });
+  if (!pts.length){ if(typeof showToast==='function') showToast('Selecciona al menos un punto'); return; }
+  if (pts.length>10){ if(typeof showToast==='function') showToast('Maximo 10 puntos por ruta'); return; }
+  var url;
+  if (pts.length===1){
+    url = 'https://www.google.com/maps?q=' + pts[0].lat + ',' + pts[0].lng;
+  } else {
+    var ordered = gpsOptimize(pts);
+    var path = ordered.map(function(p){ return p.lat+','+p.lng; }).join('/');
+    url = 'https://www.google.com/maps/dir/' + path;
+  }
+  window.open(url, '_blank');
+}
+
+function gpsExportar(){
+  var list = gpsFilteredList();
+  if (!list.length){ if(typeof showToast==='function') showToast('No hay datos para exportar'); return; }
+  gerEnsureXLSX(function(){
+    var rows = list.map(function(u){
+      return {
+        Tipo: u.tipo==='medico'?'Medico':'Farmacia',
+        Nombre: u.nombre||'',
+        Especialidad_Cadena: u.tipo==='medico'?(u.especialidad||''):(u.cadena||''),
+        Ciudad: u.ciudad||'',
+        Direccion: u.direccion||'',
+        Representante: u.rep||'',
+        Latitud: u.lat,
+        Longitud: u.lng,
+        Precision_m: u.precision_m||'',
+        Google_Maps: 'https://www.google.com/maps?q='+u.lat+','+u.lng,
+        Fecha_captura: (u.fecha||'').substring(0,10)
+      };
+    });
+    var ws = XLSX.utils.json_to_sheet(rows);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Ubicaciones GPS');
+    XLSX.writeFile(wb, 'Ubicaciones_GPS_Biogenet.xlsx');
+  });
 }
 
 </script>
