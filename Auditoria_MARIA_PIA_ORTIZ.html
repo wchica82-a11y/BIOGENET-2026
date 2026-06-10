@@ -105,43 +105,7 @@
 </style>
 </head>
 <body>
-<script>
-// === TEST MINI-JS — debe ejecutarse aunque D sea gigante ===
-(function(){
-  try {
-    var t = document.createElement('div');
-    t.id = 'js-test';
-    t.style.cssText = 'background:#22c55e;color:#fff;padding:14px;text-align:center;font-size:18px;font-weight:bold;font-family:Arial';
-    t.innerHTML = '✅ JS FUNCIONA — UserAgent: ' + (navigator.userAgent||'').substring(0, 80);
-    // Esperar a que body exista
-    if (document.body) {
-      document.body.insertBefore(t, document.body.firstChild);
-    } else {
-      document.addEventListener('DOMContentLoaded', function(){
-        document.body.insertBefore(t, document.body.firstChild);
-      });
-    }
-    // También al final cuando ya cargó todo
-    window.addEventListener('load', function(){
-      var t2 = document.createElement('div');
-      t2.id = 'js-test2';
-      t2.style.cssText = 'background:#8b5cf6;color:#fff;padding:14px;text-align:center;font-size:18px;font-weight:bold;font-family:Arial';
-      t2.innerHTML = '✅ DOM cargado completamente — D.reps: ' + (typeof D !== 'undefined' ? D.reps.length : 'D no definido');
-      document.body.insertBefore(t2, document.body.firstChild);
-    });
-  } catch(e) {
-    var t = document.createElement('div');
-    t.style.cssText='background:red;color:white;padding:14px;font-size:16px';
-    t.textContent = 'JS ERROR EN INIT: ' + e.message;
-    document.body.insertBefore(t, document.body.firstChild);
-  }
-})();
-</script>
 
-<div id="version-stamp" style="background:#0066FF;color:#FFFFFF;padding:24px;text-align:center;font-size:24px;font-weight:bold;border-bottom:4px solid #000;font-family:Arial;position:relative;z-index:999999">
-🔵 DIAGNOSTIC V3 — 181821 🔵<br>
-<span style="font-size:14px">Si ves este sello AZUL, el archivo nuevo cargó</span>
-</div>
 
 <header>
   <h1>Panel Médico Costa — Valoración de Potencial</h1>
@@ -1344,116 +1308,38 @@ document.getElementById('modal-bg').addEventListener('click', e => { if (e.targe
   document.getElementById('sel-city').value = bestCity;
   CITY_STATE.city = bestCity;
 }
-// === DIAGNÓSTICO TEMPRANO (antes de renders pesados) ===
-(function earlyDiag(){
-  try {
-    var d = document.createElement('div');
-    d.id = 'rep-filter-debug';
-    d.style.cssText = 'background:#FFF4D6;color:#7C2D12;padding:12px 16px;font-size:13px;font-family:monospace;border-bottom:2px solid #F59E0B;line-height:1.6';
-    var params = new URLSearchParams(window.location.search);
-    var repName = params.get('rep');
-    d.innerHTML = '<b>🔍 DIAGNÓSTICO:</b> URL: ' + window.location.href.substring(0, 150) +
-      ' | rep: "' + (repName||'(VACÍO)') + '"' +
-      ' | reps en D: ' + (typeof D !== 'undefined' ? D.reps.length : 'D no def') +
-      '<br>';
-    document.body.insertBefore(d, document.body.firstChild);
-    window.__debugDiv = d;
-  } catch(e) {
-    var d = document.createElement('div');
-    d.style.cssText='background:red;color:white;padding:10px;font-family:monospace';
-    d.textContent = 'EarlyDiag error: ' + e.message;
-    document.body.insertBefore(d, document.body.firstChild);
-  }
-})();
+try { renderRepGeneral(); } catch(e) { console.error("renderRepGeneral:", e); }
+try { renderCity(); } catch(e) { console.error("renderCity:", e); })();
 
-// renderRepGeneral y renderCity con try/catch (por si alguno falla en iPad Safari)
-try {
-  renderRepGeneral();
-  if (window.__debugDiv) window.__debugDiv.innerHTML += '<b style="color:#166534">renderRepGeneral OK</b><br>';
-} catch(e) {
-  if (window.__debugDiv) window.__debugDiv.innerHTML += '<b style="color:#991B1B">renderRepGeneral FALLÓ: ' + e.message + '</b><br>';
-  console.error('renderRepGeneral:', e);
-}
-try {
-  renderCity();
-  if (window.__debugDiv) window.__debugDiv.innerHTML += '<b style="color:#166534">renderCity OK</b><br>';
-} catch(e) {
-  if (window.__debugDiv) window.__debugDiv.innerHTML += '<b style="color:#991B1B">renderCity FALLÓ: ' + e.message + '</b><br>';
-  console.error('renderCity:', e);
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// FILTRO POR REPRESENTANTE — si la URL incluye ?rep=NOMBRE,
-// se oculta el resumen general/tabs y se muestra directamente el panel
-// de ese representante.
-// ─────────────────────────────────────────────────────────────────────
 (function applyRepFilter(){
-  // Reutilizar el debugDiv creado por earlyDiag
-  var debugDiv = window.__debugDiv;
-  if (!debugDiv) {
-    debugDiv = document.createElement('div');
-    debugDiv.id = 'rep-filter-debug-2';
-    debugDiv.style.cssText = 'background:#FFF4D6;color:#7C2D12;padding:12px 16px;font-size:13px;font-family:monospace';
-    document.body.insertBefore(debugDiv, document.body.firstChild);
-  }
-  
   try {
     var params = new URLSearchParams(window.location.search);
     var repName = params.get('rep');
-    debugDiv.innerHTML += '<b>--- applyRepFilter ---</b><br>';
-    
-    if (!repName) {
-      debugDiv.innerHTML += '<b style="color:#991B1B">⚠️ La URL NO incluye ?rep= — por eso muestra vista general</b>';
-      return;
+    var repIdx = -1;
+    function nrm(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim(); }
+    if (repName) {
+      var target = nrm(repName);
+      repIdx = D.reps.findIndex(function(r){ return nrm(r) === target; });
     }
-
-    function norm(s){
-      return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+    // Si NO trae ?rep= pero solo hay 1 rep (archivo individual), abrir directo ese
+    if (repIdx < 0 && D.reps.length === 1) {
+      repIdx = 0;
     }
-    var target = norm(repName);
-    var repIdx = D.reps.findIndex(function(r){ return norm(r) === target; });
-    
-    debugDiv.innerHTML += '<b>Normalizado:</b> "' + target + '"<br>' +
-      '<b>Encontrado en D.reps:</b> ' + (repIdx >= 0 ? ('Sí, índice ' + repIdx) : 'NO') + '<br>';
-
-    if (repIdx < 0) {
-      debugDiv.innerHTML += '<b style="color:#991B1B">⚠️ El nombre "' + repName + '" no coincide con ningún rep en D.reps</b><br>' +
-        'D.reps tiene: ' + D.reps.slice(0,5).join(', ') + '...';
-      return;
-    }
-
-    debugDiv.innerHTML += '<b style="color:#166534">✅ Filtro aplicándose para: ' + D.reps[repIdx] + '</b>';
-
+    if (repIdx < 0) return;  // gerente: muestra vista normal
     var tabs = document.querySelector('.tabs');
-    if (tabs) { tabs.style.display = 'none'; debugDiv.innerHTML += '<br><b>tabs:</b> ocultadas'; }
-    else { debugDiv.innerHTML += '<br><b style="color:#991B1B">tabs: NO encontradas (elemento .tabs ausente)</b>'; }
-    
-    var viewCiudad = document.getElementById('view-ciudad');
-    if (viewCiudad) { viewCiudad.style.display = 'none'; debugDiv.innerHTML += '<br><b>view-ciudad:</b> ocultado'; }
-    
+    if (tabs) tabs.style.display = 'none';
+    var vc = document.getElementById('view-ciudad');
+    if (vc) vc.style.display = 'none';
+    var vp = document.getElementById('view-productividad');
+    if (vp) vp.style.display = 'none';
     var backBtn = document.getElementById('back-to-general');
     if (backBtn) backBtn.style.display = 'none';
-
     var h1 = document.querySelector('header h1');
-    if (h1) { h1.textContent = '📊 Mi Auditoría — ' + D.reps[repIdx]; debugDiv.innerHTML += '<br><b>título:</b> actualizado'; }
+    if (h1) h1.textContent = 'Mi Auditoria - ' + D.reps[repIdx];
     var sub = document.querySelector('header .subtitle');
-    if (sub) sub.textContent = 'Detalle de prescripciones de los médicos de tu panel';
-
-    if (typeof showRepDetail === 'function') {
-      showRepDetail(repIdx);
-      debugDiv.innerHTML += '<br><b>showRepDetail:</b> llamada exitosa';
-    } else {
-      debugDiv.innerHTML += '<br><b style="color:#991B1B">showRepDetail: FUNCIÓN NO ENCONTRADA</b>';
-    }
-    
-    // Ocultar el diagnóstico después de 8 segundos si todo fue exitoso
-    setTimeout(function(){
-      if (repIdx >= 0) debugDiv.style.display = 'none';
-    }, 8000);
-  } catch(e) {
-    debugDiv.innerHTML += '<br><b style="color:#991B1B">❌ ERROR:</b> ' + e.message + '<br><small>' + (e.stack||'').split('\n')[0] + '</small>';
-    document.body.insertBefore(debugDiv, document.body.firstChild);
-  }
+    if (sub) sub.textContent = 'Detalle de prescripciones de los medicos de tu panel';
+    if (typeof showRepDetail === 'function') showRepDetail(repIdx);
+  } catch(e) { console.error('applyRepFilter:', e); }
 })();
 </script>
 </body>
