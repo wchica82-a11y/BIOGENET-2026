@@ -412,7 +412,7 @@ textarea{resize:none;height:88px;line-height:1.5}
 
       <div id="mr-form-card" class="card" style="background:#E8F4EE;border-color:#1A5C3A">
         <div class="ctitle" style="color:#1A5C3A">📦 Registra las muestras que recibiste de bodega</div>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Selecciona el producto y la cantidad recibida. La fecha se registra automáticamente.</p>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Selecciona el producto y la cantidad recibida. <b>Se suma directamente a tu inventario</b> y se descontará con cada visita. La fecha se registra automáticamente.</p>
         <div style="background:#F0F7F2;border-radius:8px;padding:9px 12px;margin-bottom:.7rem;font-size:13px;display:flex;justify-content:space-between;align-items:center">
           <span style="color:var(--t2)">📅 Fecha de registro:</span>
           <span id="mr-fecha-display" style="font-weight:700;color:#1A5C3A">—</span>
@@ -1786,7 +1786,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-17-145259';
+const APP_VERSION = '2026-06-17-183213';
 
 async function checkForUpdates() {
   try {
@@ -1965,7 +1965,8 @@ function initGMRCycleSel(){
 }
 
 async function fetchMuestrasRecibidasAll(ciclo_num){
-  var path = '/muestras_recibidas?order=rep.asc,producto.asc';
+  // Leer movimientos donde created_by != GERENTE (es decir, autoreportados por los reps)
+  var path = '/muestras_movimientos?created_by=neq.GERENTE&order=rep.asc,producto.asc';
   if (ciclo_num) path += '&ciclo_num=eq.' + ciclo_num;
   return await sbRequest('GET', path);
 }
@@ -2200,7 +2201,7 @@ async function saveMuestraRecibida(){
   var sEl = document.getElementById('mr-status');
   sEl.innerHTML = '';
   if (!CU) { sEl.innerHTML='<span style="color:var(--r)">Sin sesión</span>'; return; }
-  // Re-validar ventana al momento del guardado (anti-tampering)
+  // Re-validar ventana
   var permitido = await checkMRWindow();
   if (!permitido) {
     sEl.innerHTML='<span style="color:var(--r)">El plazo de registro está cerrado. Solicita autorización al gerente.</span>';
@@ -2208,27 +2209,26 @@ async function saveMuestraRecibida(){
   }
   var prod = document.getElementById('mr-producto').value;
   var cant = parseInt(document.getElementById('mr-cantidad').value);
-  var fecha = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
   if (!prod) { sEl.innerHTML='<span style="color:var(--r)">Selecciona un producto</span>'; return; }
   if (!cant || cant <= 0) { sEl.innerHTML='<span style="color:var(--r)">Ingresa cantidad válida</span>'; return; }
   var cyc = getCycle();
   var ciclo_num = cyc ? cyc.num : null;
-  var body = {
-    client_id: 'mr-' + Date.now() + '-' + Math.floor(Math.random()*99999),
-    rep: CU,
-    producto: prod,
-    cantidad: cant,
-    fecha: fecha,
-    ciclo_num: ciclo_num
-  };
+  if (!ciclo_num) { sEl.innerHTML='<span style="color:var(--r)">No hay ciclo activo definido</span>'; return; }
   sEl.innerHTML = '<span style="color:var(--am)">Guardando...</span>';
   try {
-    await sbRequest('POST', '/muestras_recibidas', body);
-    sEl.innerHTML = '<span style="color:var(--g)">✓ Recepción guardada</span>';
-    document.getElementById('mr-cantidad').value = '';
-    document.getElementById('mr-producto').value = '';
-    setTimeout(function(){ sEl.innerHTML=''; }, 3000);
-    renderMuestrasRecibidas();
+    // Guardar como asignación en muestras_movimientos para que afecte el saldo
+    var ok = await addMuestraMovimiento(CU, ciclo_num, prod, cant, 'asignacion', 'Auto-reportado por el rep');
+    if (ok) {
+      sEl.innerHTML = '<span style="color:var(--g)">✓ Recepción guardada y sumada a tu inventario</span>';
+      document.getElementById('mr-cantidad').value = '';
+      document.getElementById('mr-producto').value = '';
+      setTimeout(function(){ sEl.innerHTML=''; }, 3000);
+      renderMuestrasRecibidas();
+      // Refrescar saldo si la vista de muestras está visible
+      if (typeof renderMisMuestras === 'function') try { renderMisMuestras(); } catch(e){}
+    } else {
+      sEl.innerHTML = '<span style="color:var(--r)">Error al guardar</span>';
+    }
   } catch(e) {
     sEl.innerHTML = '<span style="color:var(--r)">Error: ' + (e.message||e) + '</span>';
   }
@@ -2242,7 +2242,8 @@ async function renderMuestrasRecibidas(){
   var ciclo_num = selCyc && selCyc.value ? parseInt(selCyc.value) : null;
   listEl.innerHTML = '<p style="font-size:13px;color:var(--t3);padding:8px">Cargando...</p>';
   try {
-    var path = '/muestras_recibidas?rep=eq.' + encodeURIComponent(CU);
+    // Leer de muestras_movimientos solo lo que el propio rep cargó (creado_por=CU)
+    var path = '/muestras_movimientos?rep=eq.' + encodeURIComponent(CU) + '&created_by=eq.' + encodeURIComponent(CU);
     if (ciclo_num) path += '&ciclo_num=eq.' + ciclo_num;
     path += '&order=fecha.desc,id.desc';
     var rows = await sbRequest('GET', path);
@@ -2271,10 +2272,15 @@ async function renderMuestrasRecibidas(){
 }
 
 async function deleteMuestraRecibida(id){
-  if (!confirm('¿Eliminar esta recepción?')) return;
+  if (!confirm('¿Eliminar esta recepción? Se descontará de tu inventario.')) return;
   try {
-    await sbRequest('DELETE', '/muestras_recibidas?id=eq.' + id);
+    await sbRequest('DELETE', '/muestras_movimientos?id=eq.' + id);
+    // Refrescar cache local
+    if (typeof MUESTRAS_MOV === 'object' && Array.isArray(MUESTRAS_MOV)) {
+      MUESTRAS_MOV = MUESTRAS_MOV.filter(function(m){ return m.id !== id; });
+    }
     renderMuestrasRecibidas();
+    if (typeof renderMisMuestras === 'function') try { renderMisMuestras(); } catch(e){}
   } catch(e){
     alert('Error: ' + (e.message||e));
   }
