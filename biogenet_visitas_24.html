@@ -774,8 +774,8 @@ textarea{resize:none;height:88px;line-height:1.5}
         <div class="ctitle">📊 Saldos de muestras por representante</div>
         <p style="font-size:12px;color:var(--t3);margin-bottom:.75rem">Saldo = (Asignado total del mes) − (Entregado en visitas del mes)</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <select id="g-mu-ciclo" onchange="renderMuestras()" style="flex:1;min-width:160px"></select>
-          <select id="g-mu-linea" onchange="renderMuestras()" style="flex:1;min-width:130px">
+          <select id="g-mu-ciclo" onchange="refreshMuestrasView()" style="flex:1;min-width:160px"></select>
+          <select id="g-mu-linea" onchange="refreshMuestrasView()" style="flex:1;min-width:130px">
             <option value="">Todas las líneas</option>
             <option value="LINEA 1">Línea 1</option>
             <option value="LINEA 2">Línea 2</option>
@@ -1786,7 +1786,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-17-183213';
+const APP_VERSION = '2026-06-17-220330';
 
 async function checkForUpdates() {
   try {
@@ -2482,7 +2482,16 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-sync'){ renderSyncStatus(); }
   if(el.dataset.tab==='g-ne') renderNE();
   if(el.dataset.tab==='g-ciclo'){ renderCycleInfo(); renderMatAdmin(); }
-  if(el.dataset.tab==='g-muestras'){ initMuestrasMes(); renderMuestras(); renderGMuestrasRecibidas(); loadMuestrasWindow(); }
+  if(el.dataset.tab==='g-muestras'){ 
+    initMuestrasMes(); 
+    if (typeof loadMuestrasMov === 'function') {
+      loadMuestrasMov().then(function(){ renderMuestras(); });
+    } else {
+      renderMuestras();
+    }
+    renderGMuestrasRecibidas(); 
+    loadMuestrasWindow(); 
+  }
   if(el.dataset.tab==='g-pend'){ initGPendSelects(); renderGPend(); }
   if(el.dataset.tab==='g-gps'){ try{ renderGpsPanel(); }catch(e){ console.warn('GPS panel error:', e); } }
   if(el.dataset.tab==='t-ped'){ try{ initPedidosRep(); }catch(e){ console.warn('Pedidos rep error:', e); } }
@@ -3804,6 +3813,13 @@ function initMuestrasCiclos(){
   sel.innerHTML = html || '<option value="">— sin ciclos definidos —</option>';
   initMuestrasForm();
 }
+async function refreshMuestrasView(){
+  try {
+    if (typeof loadMuestrasMov === 'function') await loadMuestrasMov();
+  } catch(e){}
+  renderMuestras();
+}
+
 function renderMuestras(){
   const ciclo = document.getElementById('g-mu-ciclo')?.value || '';
   const linFil = document.getElementById('g-mu-linea')?.value || '';
