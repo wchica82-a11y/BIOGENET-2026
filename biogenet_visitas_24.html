@@ -239,6 +239,9 @@ textarea{resize:none;height:88px;line-height:1.5}
     <div class="tab" data-tab="t-hist" onclick="swTab(this,'app-tabs','s-app')">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Mis visitas
     </div>
+    <div class="tab" data-tab="t-mues" onclick="swTab(this,'app-tabs','s-app')">
+      <svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0016.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 002 8.5c0 2.29 1.51 4.04 3 5.5l7 7z"/></svg>Muestras
+    </div>
     <div class="tab" data-tab="t-ped" onclick="swTab(this,'app-tabs','s-app')">
       <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg>Pedidos
     </div>
@@ -394,6 +397,41 @@ textarea{resize:none;height:88px;line-height:1.5}
         </div>
       </div>
       <div id="hlist"></div>
+    </div>
+
+    <!-- MUESTRAS RECIBIDAS -->
+    <div id="t-mues" class="panel">
+      <div class="card" style="background:#E8F4EE;border-color:#1A5C3A">
+        <div class="ctitle" style="color:#1A5C3A">📦 Registra las muestras que recibiste de bodega</div>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Cada vez que recibas muestras, regístralas aquí. La fecha se guarda automáticamente para auditoría.</p>
+        <div class="field" style="margin-bottom:.6rem"><label>Producto</label>
+          <select id="mr-producto" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f);background:#fff">
+            <option value="">— Selecciona un producto —</option>
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.6rem">
+          <div class="field" style="margin-bottom:0"><label>Cantidad recibida</label>
+            <input type="number" id="mr-cantidad" placeholder="Ej: 200" min="1" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Fecha de recepción</label>
+            <input type="date" id="mr-fecha" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:.6rem"><label>Comentario (opcional)</label>
+          <input type="text" id="mr-comentario" placeholder="Ej: lote 2435, recibí incompleto..." style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
+        </div>
+        <button class="btn btn-p" onclick="saveMuestraRecibida()" style="width:100%;padding:13px;font-size:14px;font-weight:700">✅ Guardar recepción</button>
+        <div id="mr-status" style="margin-top:8px;font-size:13px"></div>
+      </div>
+
+      <div class="card">
+        <div class="ctitle">📋 Mis recepciones</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+          <select id="mr-cycle-sel" onchange="renderMuestrasRecibidas()" style="flex:1;min-width:200px;padding:8px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:13px"></select>
+        </div>
+        <div id="mr-stats" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px;font-size:13px"></div>
+        <div id="mr-list"></div>
+      </div>
     </div>
 
     <!-- PEDIDOS -->
@@ -653,6 +691,21 @@ textarea{resize:none;height:88px;line-height:1.5}
           <span id="mu-xlsx-status" style="font-size:13px;color:var(--t2)">— Ningún archivo cargado —</span>
         </div>
         <input type="file" id="mu-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="cargarMuestrasXLSX(this)">
+      </div>
+
+      <!-- Recepciones reportadas por los visitadores -->
+      <div class="card" style="background:#F0F7F2;border-color:#1A5C3A">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:.5rem">
+          <div class="ctitle" style="color:#1A5C3A;margin-bottom:0">📦 Recepciones reportadas por reps</div>
+          <button class="btn" onclick="exportMuestrasRecibidas()" style="padding:8px 14px;background:#1A5C3A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">📤 Exportar a Excel</button>
+        </div>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:.5rem">Lista de muestras que cada visitador reportó haber recibido de bodega. Filtra por ciclo:</p>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+          <select id="gmr-cycle-sel" onchange="renderGMuestrasRecibidas()" style="flex:1;min-width:200px;padding:8px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:13px"></select>
+          <button class="btn" onclick="renderGMuestrasRecibidas()" style="padding:8px 14px;background:#fff;color:#1A5C3A;border:1.5px solid #1A5C3A;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px">🔄 Refrescar</button>
+        </div>
+        <div id="gmr-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:12px"></div>
+        <div id="gmr-list" style="max-height:500px;overflow:auto"></div>
       </div>
 
       <!-- Form: Asignar muestras (individual) -->
@@ -1708,7 +1761,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-17-132151';
+const APP_VERSION = '2026-06-17-142140';
 
 async function checkForUpdates() {
   try {
@@ -1867,6 +1920,250 @@ function getAllCycles(){
     if (!list.find(x=>x.num===c.num)) list.push(c);
   });
   return list.sort((a,b)=>(b.ini||'').localeCompare(a.ini||''));
+}
+
+// ────────────────────────────────────
+// MUESTRAS RECIBIDAS — VISTA GERENCIAL
+// ────────────────────────────────────
+function initGMRCycleSel(){
+  var sel = document.getElementById('gmr-cycle-sel');
+  if (!sel) return;
+  var all = (typeof getAllCycles==='function') ? getAllCycles() : [];
+  var curr = (typeof getCycle==='function') ? getCycle() : null;
+  var html = '<option value="">Todos los ciclos</option>';
+  all.forEach(function(cy){
+    var isActive = curr && cy.num === curr.num;
+    var label = 'Ciclo ' + cy.num + ' (' + (cy.ini||'?') + ' a ' + (cy.fin||'?') + ')' + (isActive ? ' - ACTUAL' : '');
+    html += '<option value="' + cy.num + '"' + (isActive ? ' selected' : '') + '>' + label + '</option>';
+  });
+  sel.innerHTML = html;
+}
+
+async function fetchMuestrasRecibidasAll(ciclo_num){
+  var path = '/muestras_recibidas?order=rep.asc,producto.asc';
+  if (ciclo_num) path += '&ciclo_num=eq.' + ciclo_num;
+  return await sbRequest('GET', path);
+}
+
+async function renderGMuestrasRecibidas(){
+  var listEl = document.getElementById('gmr-list');
+  var statsEl = document.getElementById('gmr-stats');
+  if (!listEl) return;
+  initGMRCycleSel();
+  var sel = document.getElementById('gmr-cycle-sel');
+  var ciclo = sel && sel.value ? parseInt(sel.value) : null;
+  listEl.innerHTML = '<p style="padding:10px;color:var(--t3)">Cargando...</p>';
+  try {
+    var rows = await fetchMuestrasRecibidasAll(ciclo);
+    // Agregar por rep+producto
+    var agg = {};
+    rows.forEach(function(r){
+      var k = r.rep + '||' + r.producto;
+      if (!agg[k]) agg[k] = {rep: r.rep, producto: r.producto, cantidad: 0, n: 0, ultima_fecha: r.fecha};
+      agg[k].cantidad += r.cantidad;
+      agg[k].n += 1;
+      if (r.fecha > agg[k].ultima_fecha) agg[k].ultima_fecha = r.fecha;
+    });
+    var data = Object.values(agg).sort(function(a,b){
+      if (a.rep !== b.rep) return a.rep.localeCompare(b.rep);
+      return a.producto.localeCompare(b.producto);
+    });
+    // Stats
+    var totalMuestras = rows.reduce(function(s,r){return s+r.cantidad;},0);
+    var reps = new Set(rows.map(function(r){return r.rep;})).size;
+    var prods = new Set(rows.map(function(r){return r.producto;})).size;
+    statsEl.innerHTML =
+      '<div class="sbox"><div class="slbl">Total muestras</div><div class="snum">' + totalMuestras.toLocaleString('es-EC') + '</div></div>' +
+      '<div class="sbox"><div class="slbl">Reps</div><div class="snum">' + reps + '</div></div>' +
+      '<div class="sbox"><div class="slbl">Productos</div><div class="snum">' + prods + '</div></div>';
+    if (!data.length) {
+      listEl.innerHTML = '<p style="padding:10px;color:var(--t3)">No hay recepciones registradas.</p>';
+      return;
+    }
+    var rowsHtml = data.map(function(d){
+      return '<tr style="border-bottom:1px solid #eef2ef">' +
+        '<td style="padding:6px 8px">' + d.rep + '</td>' +
+        '<td style="padding:6px 8px">' + d.producto + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-weight:700">' + d.cantidad + '</td>' +
+        '<td style="padding:6px 8px;font-size:11px;color:var(--t3)">' + d.n + ' registro(s)</td>' +
+        '<td style="padding:6px 8px;font-size:11px">' + d.ultima_fecha + '</td>' +
+      '</tr>';
+    }).join('');
+    listEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead style="background:#1A5C3A;color:#fff"><tr>'+
+      '<th style="padding:8px;text-align:left">Rep</th>'+
+      '<th style="padding:8px;text-align:left">Producto</th>'+
+      '<th style="padding:8px;text-align:right">Cantidad</th>'+
+      '<th style="padding:8px;text-align:left"># registros</th>'+
+      '<th style="padding:8px;text-align:left">Última fecha</th>'+
+      '</tr></thead><tbody>'+rowsHtml+'</tbody></table>';
+  } catch(e){
+    listEl.innerHTML = '<p style="padding:10px;color:var(--r)">Error: ' + (e.message||e) + '</p>';
+  }
+}
+
+async function exportMuestrasRecibidas(){
+  var sel = document.getElementById('gmr-cycle-sel');
+  var ciclo = sel && sel.value ? parseInt(sel.value) : null;
+  try {
+    var rows = await fetchMuestrasRecibidasAll(ciclo);
+    if (!rows.length) { alert('No hay datos para exportar.'); return; }
+    // Agregar por rep+producto sumando
+    var agg = {};
+    rows.forEach(function(r){
+      var k = r.rep + '||' + r.producto;
+      if (!agg[k]) agg[k] = {REPRESENTANTE: r.rep, PRODUCTO: r.producto, CANTIDAD: 0, ULTIMA_FECHA: r.fecha};
+      agg[k].CANTIDAD += r.cantidad;
+      if (r.fecha > agg[k].ULTIMA_FECHA) agg[k].ULTIMA_FECHA = r.fecha;
+    });
+    var data = Object.values(agg).map(function(d){
+      return {REPRESENTANTE: d.REPRESENTANTE, PRODUCTO: d.PRODUCTO, 'CANTIDAD MUESTRAS': d.CANTIDAD, 'ULTIMA FECHA': d.ULTIMA_FECHA};
+    }).sort(function(a,b){
+      if (a.REPRESENTANTE !== b.REPRESENTANTE) return a.REPRESENTANTE.localeCompare(b.REPRESENTANTE);
+      return a.PRODUCTO.localeCompare(b.PRODUCTO);
+    });
+    gerEnsureXLSX(function(){
+      var ws = XLSX.utils.json_to_sheet(data);
+      // Anchos de columna
+      ws['!cols'] = [{wch:24},{wch:25},{wch:18},{wch:14}];
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Recepciones');
+      var sufijo = ciclo ? ('_ciclo'+ciclo) : '_todos';
+      var fname = 'Muestras_Recibidas' + sufijo + '_' + (typeof todayISO==='function'?todayISO():new Date().toISOString().slice(0,10)) + '.xlsx';
+      XLSX.writeFile(wb, fname);
+    });
+  } catch(e){
+    alert('Error: ' + (e.message||e));
+  }
+}
+
+// ────────────────────────────────────
+// MUESTRAS RECIBIDAS (visitador)
+// ────────────────────────────────────
+function getMuestrasCatalog(){
+  // Productos que el rep puede registrar como recibidas
+  var lin = (typeof REP_LINEA==='object' && CU && REP_LINEA[CU]) ? REP_LINEA[CU] : '';
+  var prodLin = (typeof PROD_LINEA==='object' && lin && PROD_LINEA[lin]) ? PROD_LINEA[lin] : [];
+  // Combinar L1 + L2 para que estén todos los productos (algunos reps pueden tener mezcla)
+  var p1 = (typeof PROD_LINEA==='object' && PROD_LINEA['LINEA 1']) ? PROD_LINEA['LINEA 1'] : [];
+  var p2 = (typeof PROD_LINEA==='object' && PROD_LINEA['LINEA 2']) ? PROD_LINEA['LINEA 2'] : [];
+  var todos = {};
+  prodLin.forEach(function(p){ todos[p]=true; });
+  p1.forEach(function(p){ todos[p]=true; });
+  p2.forEach(function(p){ todos[p]=true; });
+  return Object.keys(todos).sort();
+}
+
+function initMuestrasRecibidas(){
+  // Llenar dropdown de productos
+  var sel = document.getElementById('mr-producto');
+  if (sel) {
+    var prods = getMuestrasCatalog();
+    var html = '<option value="">— Selecciona un producto —</option>';
+    prods.forEach(function(p){ html += '<option value="' + p + '">' + p + '</option>'; });
+    sel.innerHTML = html;
+  }
+  // Default fecha = hoy
+  var f = document.getElementById('mr-fecha');
+  if (f && !f.value) f.value = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
+  // Llenar selector de ciclos
+  initMRCycleSel();
+  renderMuestrasRecibidas();
+}
+
+function initMRCycleSel(){
+  var sel = document.getElementById('mr-cycle-sel');
+  if (!sel) return;
+  var all = (typeof getAllCycles==='function') ? getAllCycles() : [];
+  var curr = (typeof getCycle==='function') ? getCycle() : null;
+  var html = '';
+  all.forEach(function(cy){
+    var isActive = curr && cy.num === curr.num;
+    var label = 'Ciclo ' + cy.num + ' (' + (cy.ini||'?') + ' a ' + (cy.fin||'?') + ')' + (isActive ? ' - ACTUAL' : '');
+    html += '<option value="' + cy.num + '"' + (isActive ? ' selected' : '') + '>' + label + '</option>';
+  });
+  sel.innerHTML = html;
+}
+
+async function saveMuestraRecibida(){
+  var sEl = document.getElementById('mr-status');
+  sEl.innerHTML = '';
+  if (!CU) { sEl.innerHTML='<span style="color:var(--r)">Sin sesión</span>'; return; }
+  var prod = document.getElementById('mr-producto').value;
+  var cant = parseInt(document.getElementById('mr-cantidad').value);
+  var fecha = document.getElementById('mr-fecha').value;
+  var coment = document.getElementById('mr-comentario').value.trim() || null;
+  if (!prod) { sEl.innerHTML='<span style="color:var(--r)">Selecciona un producto</span>'; return; }
+  if (!cant || cant <= 0) { sEl.innerHTML='<span style="color:var(--r)">Ingresa cantidad válida</span>'; return; }
+  if (!fecha) { sEl.innerHTML='<span style="color:var(--r)">Selecciona fecha</span>'; return; }
+  var cyc = getCycle();
+  var ciclo_num = cyc ? cyc.num : null;
+  var body = {
+    client_id: 'mr-' + Date.now() + '-' + Math.floor(Math.random()*99999),
+    rep: CU,
+    producto: prod,
+    cantidad: cant,
+    fecha: fecha,
+    ciclo_num: ciclo_num,
+    comentario: coment
+  };
+  sEl.innerHTML = '<span style="color:var(--am)">Guardando...</span>';
+  try {
+    await sbRequest('POST', '/muestras_recibidas', body);
+    sEl.innerHTML = '<span style="color:var(--g)">✓ Recepción guardada</span>';
+    document.getElementById('mr-cantidad').value = '';
+    document.getElementById('mr-comentario').value = '';
+    document.getElementById('mr-producto').value = '';
+    setTimeout(function(){ sEl.innerHTML=''; }, 3000);
+    renderMuestrasRecibidas();
+  } catch(e) {
+    sEl.innerHTML = '<span style="color:var(--r)">Error: ' + (e.message||e) + '</span>';
+  }
+}
+
+async function renderMuestrasRecibidas(){
+  var listEl = document.getElementById('mr-list');
+  var statsEl = document.getElementById('mr-stats');
+  if (!listEl || !CU) return;
+  var selCyc = document.getElementById('mr-cycle-sel');
+  var ciclo_num = selCyc && selCyc.value ? parseInt(selCyc.value) : null;
+  listEl.innerHTML = '<p style="font-size:13px;color:var(--t3);padding:8px">Cargando...</p>';
+  try {
+    var path = '/muestras_recibidas?rep=eq.' + encodeURIComponent(CU);
+    if (ciclo_num) path += '&ciclo_num=eq.' + ciclo_num;
+    path += '&order=fecha.desc,id.desc';
+    var rows = await sbRequest('GET', path);
+    var total = rows.reduce(function(s,r){ return s + (r.cantidad||0); }, 0);
+    var prods = {};
+    rows.forEach(function(r){ prods[r.producto] = (prods[r.producto]||0) + r.cantidad; });
+    statsEl.innerHTML =
+      '<div class="sbox"><div class="slbl">Total muestras</div><div class="snum">' + total + '</div></div>' +
+      '<div class="sbox"><div class="slbl">Productos</div><div class="snum">' + Object.keys(prods).length + '</div></div>';
+    if (!rows.length) {
+      listEl.innerHTML = '<p style="font-size:13px;color:var(--t3);padding:8px">No hay recepciones registradas en este ciclo.</p>';
+      return;
+    }
+    listEl.innerHTML = rows.map(function(r){
+      return '<div style="padding:10px;border-bottom:1px solid #eef2ef">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">' +
+          '<div style="flex:1"><b>' + r.producto + '</b><div style="font-size:11.5px;color:var(--t3)">' + r.fecha + (r.comentario?' · '+r.comentario:'') + '</div></div>' +
+          '<div style="font-weight:700;color:var(--g);font-size:15px">' + r.cantidad + '</div>' +
+          '<button onclick="deleteMuestraRecibida(' + r.id + ')" style="padding:4px 9px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11px;font-weight:600;cursor:pointer">🗑</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e){
+    listEl.innerHTML = '<p style="font-size:13px;color:var(--r);padding:8px">Error al cargar: ' + (e.message||e) + '</p>';
+  }
+}
+
+async function deleteMuestraRecibida(id){
+  if (!confirm('¿Eliminar esta recepción?')) return;
+  try {
+    await sbRequest('DELETE', '/muestras_recibidas?id=eq.' + id);
+    renderMuestrasRecibidas();
+  } catch(e){
+    alert('Error: ' + (e.message||e));
+  }
 }
 
 // ── BOOT ──
@@ -2056,6 +2353,7 @@ function swTab(el,tabsId,screenId){
     _ap.classList.add('on');
   }
   if(el.dataset.tab==='t-hist') renderHist();
+  if(el.dataset.tab==='t-mues') initMuestrasRecibidas();
   if(el.dataset.tab==='g-cob'){ initCobCicloFilter(); renderCobertura(); }
   if(el.dataset.tab==='g-res') renderGRes();
   if(el.dataset.tab==='g-vis'){ initGVisCiclos(); renderGVis(); }
@@ -2064,7 +2362,7 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-sync'){ renderSyncStatus(); }
   if(el.dataset.tab==='g-ne') renderNE();
   if(el.dataset.tab==='g-ciclo'){ renderCycleInfo(); renderMatAdmin(); }
-  if(el.dataset.tab==='g-muestras'){ initMuestrasMes(); renderMuestras(); }
+  if(el.dataset.tab==='g-muestras'){ initMuestrasMes(); renderMuestras(); renderGMuestrasRecibidas(); }
   if(el.dataset.tab==='g-pend'){ initGPendSelects(); renderGPend(); }
   if(el.dataset.tab==='g-gps'){ try{ renderGpsPanel(); }catch(e){ console.warn('GPS panel error:', e); } }
   if(el.dataset.tab==='t-ped'){ try{ initPedidosRep(); }catch(e){ console.warn('Pedidos rep error:', e); } }
