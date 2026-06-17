@@ -401,24 +401,29 @@ textarea{resize:none;height:88px;line-height:1.5}
 
     <!-- MUESTRAS RECIBIDAS -->
     <div id="t-mues" class="panel">
-      <div class="card" style="background:#E8F4EE;border-color:#1A5C3A">
+      <!-- Banner ventana cerrada (oculto por default) -->
+      <div id="mr-window-blocked" class="card" style="display:none;background:#FEF3C7;border-color:#F59E0B">
+        <div class="ctitle" style="color:#92400E">🔒 Registro de muestras cerrado</div>
+        <p style="font-size:13px;color:#92400E;margin:0">
+          El plazo para registrar muestras recibidas no está habilitado. Si necesitas reportar, <b>solicita autorización al gerente</b> para que extienda la ventana.
+        </p>
+        <p id="mr-window-info" style="font-size:12px;color:#92400E;margin-top:6px;font-weight:600"></p>
+      </div>
+
+      <div id="mr-form-card" class="card" style="background:#E8F4EE;border-color:#1A5C3A">
         <div class="ctitle" style="color:#1A5C3A">📦 Registra las muestras que recibiste de bodega</div>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Cada vez que recibas muestras, regístralas aquí. La fecha se guarda automáticamente para auditoría.</p>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Selecciona el producto y la cantidad recibida. La fecha se registra automáticamente.</p>
+        <div style="background:#F0F7F2;border-radius:8px;padding:9px 12px;margin-bottom:.7rem;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--t2)">📅 Fecha de registro:</span>
+          <span id="mr-fecha-display" style="font-weight:700;color:#1A5C3A">—</span>
+        </div>
         <div class="field" style="margin-bottom:.6rem"><label>Producto</label>
           <select id="mr-producto" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f);background:#fff">
             <option value="">— Selecciona un producto —</option>
           </select>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.6rem">
-          <div class="field" style="margin-bottom:0"><label>Cantidad recibida</label>
-            <input type="number" id="mr-cantidad" placeholder="Ej: 200" min="1" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
-          </div>
-          <div class="field" style="margin-bottom:0"><label>Fecha de recepción</label>
-            <input type="date" id="mr-fecha" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
-          </div>
-        </div>
-        <div class="field" style="margin-bottom:.6rem"><label>Comentario (opcional)</label>
-          <input type="text" id="mr-comentario" placeholder="Ej: lote 2435, recibí incompleto..." style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
+        <div class="field" style="margin-bottom:.6rem"><label>Cantidad recibida</label>
+          <input type="number" id="mr-cantidad" placeholder="Ej: 200" min="1" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
         </div>
         <button class="btn btn-p" onclick="saveMuestraRecibida()" style="width:100%;padding:13px;font-size:14px;font-weight:700">✅ Guardar recepción</button>
         <div id="mr-status" style="margin-top:8px;font-size:13px"></div>
@@ -706,6 +711,26 @@ textarea{resize:none;height:88px;line-height:1.5}
         </div>
         <div id="gmr-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:12px"></div>
         <div id="gmr-list" style="max-height:500px;overflow:auto"></div>
+      </div>
+
+      <!-- Ventana de habilitación de reporte de recepciones -->
+      <div class="card" style="background:#FFF3E0;border-color:#F59E0B">
+        <div class="ctitle" style="color:#92400E">⏰ Período habilitado para registrar recepciones</div>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Define las fechas en que los reps pueden ingresar muestras recibidas. Fuera de ese rango el formulario queda bloqueado y deberán solicitarte autorización.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.6rem">
+          <div class="field" style="margin-bottom:0"><label>Desde</label>
+            <input type="date" id="mw-ini" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Hasta</label>
+            <input type="date" id="mw-fin" style="width:100%;padding:10px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:14px;font-family:var(--f)">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-p" onclick="saveMuestrasWindow()" style="flex:1;min-width:140px;padding:11px;font-weight:700">💾 Guardar período</button>
+          <button onclick="closeMuestrasWindow()" style="flex:0 0 auto;padding:11px 16px;background:#fff;border:1.5px solid #C0392B;border-radius:8px;color:#C0392B;font-weight:600;cursor:pointer;font-size:13px">🔒 Cerrar ahora</button>
+        </div>
+        <div id="mw-status" style="margin-top:8px;font-size:13px"></div>
+        <div id="mw-current" style="margin-top:8px;font-size:13px;color:var(--t2)"></div>
       </div>
 
       <!-- Form: Asignar muestras (individual) -->
@@ -1761,7 +1786,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-17-142140';
+const APP_VERSION = '2026-06-17-145259';
 
 async function checkForUpdates() {
   try {
@@ -2001,6 +2026,57 @@ async function renderGMuestrasRecibidas(){
   }
 }
 
+async function loadMuestrasWindow(){
+  try {
+    var w = await getCloudConfig('muestras_window');
+    var iniEl = document.getElementById('mw-ini');
+    var finEl = document.getElementById('mw-fin');
+    var curEl = document.getElementById('mw-current');
+    if (w && w.ini) iniEl.value = w.ini;
+    if (w && w.fin) finEl.value = w.fin;
+    if (curEl) {
+      if (w && w.ini && w.fin) {
+        var hoy = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
+        var activo = (hoy >= w.ini && hoy <= w.fin);
+        curEl.innerHTML = '<b>Período actual:</b> ' + w.ini + ' al ' + w.fin + (activo ? ' <span style="color:var(--g);font-weight:700">· ✓ ACTIVO</span>' : ' <span style="color:#C0392B;font-weight:700">· ✗ FUERA DE PERÍODO (hoy: '+hoy+')</span>');
+      } else {
+        curEl.innerHTML = '<b style="color:#C0392B">Sin período definido — formulario bloqueado para todos.</b>';
+      }
+    }
+  } catch(e){ console.warn('loadMuestrasWindow:', e.message); }
+}
+
+async function saveMuestrasWindow(){
+  var sEl = document.getElementById('mw-status');
+  sEl.innerHTML = '';
+  var ini = document.getElementById('mw-ini').value;
+  var fin = document.getElementById('mw-fin').value;
+  if (!ini || !fin) { sEl.innerHTML='<span style="color:var(--r)">Ingresa ambas fechas</span>'; return; }
+  if (fin < ini) { sEl.innerHTML='<span style="color:var(--r)">Fin debe ser >= inicio</span>'; return; }
+  try {
+    await setCloudConfig('muestras_window', {ini: ini, fin: fin});
+    sEl.innerHTML='<span style="color:var(--g)">✓ Período guardado</span>';
+    loadMuestrasWindow();
+    setTimeout(function(){ sEl.innerHTML=''; }, 3000);
+  } catch(e){
+    sEl.innerHTML='<span style="color:var(--r)">Error: '+(e.message||e)+'</span>';
+  }
+}
+
+async function closeMuestrasWindow(){
+  if (!confirm('¿Cerrar el período de registro ahora? Los reps ya no podrán reportar muestras hasta que abras un nuevo período.')) return;
+  try {
+    // Setear ventana a un rango pasado para cerrarla
+    var ayer = new Date(); ayer.setDate(ayer.getDate()-1);
+    var s = ayer.toISOString().slice(0,10);
+    await setCloudConfig('muestras_window', {ini: s, fin: s});
+    document.getElementById('mw-status').innerHTML='<span style="color:var(--g)">✓ Período cerrado</span>';
+    loadMuestrasWindow();
+  } catch(e){
+    document.getElementById('mw-status').innerHTML='<span style="color:var(--r)">Error: '+(e.message||e)+'</span>';
+  }
+}
+
 async function exportMuestrasRecibidas(){
   var sel = document.getElementById('gmr-cycle-sel');
   var ciclo = sel && sel.value ? parseInt(sel.value) : null;
@@ -2053,7 +2129,7 @@ function getMuestrasCatalog(){
   return Object.keys(todos).sort();
 }
 
-function initMuestrasRecibidas(){
+async function initMuestrasRecibidas(){
   // Llenar dropdown de productos
   var sel = document.getElementById('mr-producto');
   if (sel) {
@@ -2062,12 +2138,48 @@ function initMuestrasRecibidas(){
     prods.forEach(function(p){ html += '<option value="' + p + '">' + p + '</option>'; });
     sel.innerHTML = html;
   }
-  // Default fecha = hoy
-  var f = document.getElementById('mr-fecha');
-  if (f && !f.value) f.value = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
+  // Mostrar fecha de hoy (no editable)
+  var fd = document.getElementById('mr-fecha-display');
+  var hoy = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
+  if (fd) fd.textContent = hoy;
+  // Validar ventana de habilitación
+  await checkMRWindow();
   // Llenar selector de ciclos
   initMRCycleSel();
   renderMuestrasRecibidas();
+}
+
+async function checkMRWindow(){
+  var blockedEl = document.getElementById('mr-window-blocked');
+  var formEl = document.getElementById('mr-form-card');
+  var infoEl = document.getElementById('mr-window-info');
+  try {
+    var w = await getCloudConfig('muestras_window');
+    var hoy = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
+    if (!w || !w.ini || !w.fin) {
+      // No hay ventana definida: bloquear
+      blockedEl.style.display = '';
+      formEl.style.display = 'none';
+      if (infoEl) infoEl.textContent = 'El gerente aún no ha definido un período de registro.';
+      return false;
+    }
+    if (hoy < w.ini || hoy > w.fin) {
+      blockedEl.style.display = '';
+      formEl.style.display = 'none';
+      if (infoEl) infoEl.textContent = 'Período habilitado: ' + w.ini + ' al ' + w.fin + ' · Hoy: ' + hoy;
+      return false;
+    }
+    // Ventana abierta
+    blockedEl.style.display = 'none';
+    formEl.style.display = '';
+    return true;
+  } catch(e) {
+    console.warn('Error verificando ventana:', e.message);
+    // En caso de error: dejar formulario visible (no bloquear por error de red)
+    blockedEl.style.display = 'none';
+    formEl.style.display = '';
+    return true;
+  }
 }
 
 function initMRCycleSel(){
@@ -2088,13 +2200,17 @@ async function saveMuestraRecibida(){
   var sEl = document.getElementById('mr-status');
   sEl.innerHTML = '';
   if (!CU) { sEl.innerHTML='<span style="color:var(--r)">Sin sesión</span>'; return; }
+  // Re-validar ventana al momento del guardado (anti-tampering)
+  var permitido = await checkMRWindow();
+  if (!permitido) {
+    sEl.innerHTML='<span style="color:var(--r)">El plazo de registro está cerrado. Solicita autorización al gerente.</span>';
+    return;
+  }
   var prod = document.getElementById('mr-producto').value;
   var cant = parseInt(document.getElementById('mr-cantidad').value);
-  var fecha = document.getElementById('mr-fecha').value;
-  var coment = document.getElementById('mr-comentario').value.trim() || null;
+  var fecha = (typeof todayISO==='function' ? todayISO() : new Date().toISOString().slice(0,10));
   if (!prod) { sEl.innerHTML='<span style="color:var(--r)">Selecciona un producto</span>'; return; }
   if (!cant || cant <= 0) { sEl.innerHTML='<span style="color:var(--r)">Ingresa cantidad válida</span>'; return; }
-  if (!fecha) { sEl.innerHTML='<span style="color:var(--r)">Selecciona fecha</span>'; return; }
   var cyc = getCycle();
   var ciclo_num = cyc ? cyc.num : null;
   var body = {
@@ -2103,15 +2219,13 @@ async function saveMuestraRecibida(){
     producto: prod,
     cantidad: cant,
     fecha: fecha,
-    ciclo_num: ciclo_num,
-    comentario: coment
+    ciclo_num: ciclo_num
   };
   sEl.innerHTML = '<span style="color:var(--am)">Guardando...</span>';
   try {
     await sbRequest('POST', '/muestras_recibidas', body);
     sEl.innerHTML = '<span style="color:var(--g)">✓ Recepción guardada</span>';
     document.getElementById('mr-cantidad').value = '';
-    document.getElementById('mr-comentario').value = '';
     document.getElementById('mr-producto').value = '';
     setTimeout(function(){ sEl.innerHTML=''; }, 3000);
     renderMuestrasRecibidas();
@@ -2145,7 +2259,7 @@ async function renderMuestrasRecibidas(){
     listEl.innerHTML = rows.map(function(r){
       return '<div style="padding:10px;border-bottom:1px solid #eef2ef">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">' +
-          '<div style="flex:1"><b>' + r.producto + '</b><div style="font-size:11.5px;color:var(--t3)">' + r.fecha + (r.comentario?' · '+r.comentario:'') + '</div></div>' +
+          '<div style="flex:1"><b>' + r.producto + '</b><div style="font-size:11.5px;color:var(--t3)">' + r.fecha + '</div></div>' +
           '<div style="font-weight:700;color:var(--g);font-size:15px">' + r.cantidad + '</div>' +
           '<button onclick="deleteMuestraRecibida(' + r.id + ')" style="padding:4px 9px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11px;font-weight:600;cursor:pointer">🗑</button>' +
         '</div>' +
@@ -2362,7 +2476,7 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-sync'){ renderSyncStatus(); }
   if(el.dataset.tab==='g-ne') renderNE();
   if(el.dataset.tab==='g-ciclo'){ renderCycleInfo(); renderMatAdmin(); }
-  if(el.dataset.tab==='g-muestras'){ initMuestrasMes(); renderMuestras(); renderGMuestrasRecibidas(); }
+  if(el.dataset.tab==='g-muestras'){ initMuestrasMes(); renderMuestras(); renderGMuestrasRecibidas(); loadMuestrasWindow(); }
   if(el.dataset.tab==='g-pend'){ initGPendSelects(); renderGPend(); }
   if(el.dataset.tab==='g-gps'){ try{ renderGpsPanel(); }catch(e){ console.warn('GPS panel error:', e); } }
   if(el.dataset.tab==='t-ped'){ try{ initPedidosRep(); }catch(e){ console.warn('Pedidos rep error:', e); } }
