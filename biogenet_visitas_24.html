@@ -1216,6 +1216,7 @@ async function retryPendingSync(){
   var pending = getPendingSync();
   if (!pending.length) return;
   setSyncStatus('syncing');
+  var realErrors = 0;
   for (var i = 0; i < pending.length; i++) {
     var id = pending[i];
     var v = visits.find(function(x){ return x.id === id; });
@@ -1224,8 +1225,16 @@ async function retryPendingSync(){
       await sbRequest('POST', '/visits', visitToRow(v));
       clearFromQueue(id);
     } catch (e) {
-      console.warn('Reintento fallido para visita', id, e.message);
-      break; // Si falla uno, salir; otros también fallarán probablemente
+      var msg = (e && e.message) || '';
+      // Si la visita ya existe en Supabase (409/duplicate), considerar como subida y limpiar de cola
+      if (msg.indexOf('409') >= 0 || msg.toLowerCase().indexOf('duplicate') >= 0 || msg.indexOf('23505') >= 0) {
+        console.warn('Visita', id, 'ya estaba en Supabase (409/duplicate) - limpiando de cola');
+        clearFromQueue(id);
+      } else {
+        console.warn('Reintento fallido para visita', id, msg);
+        realErrors++;
+        if (realErrors >= 3) break; // dejar de intentar si hay errores reales
+      }
     }
   }
   var remaining = getPendingSync().length;
@@ -1250,7 +1259,13 @@ async function manualSync(){
     } catch(e){}
     var pend = getPendingSync().length;
     if (pend > 0) {
-      alert('Sincronización completada. Aún quedan ' + pend + ' visita(s) pendiente(s) — revisa tu conexión a internet.');
+      var msg = 'Sincronización completada. Aún quedan ' + pend + ' visita(s) marcada(s) como pendiente(s).\n\n' +
+                'En la mayoría de casos estas son visitas que YA están en el sistema pero quedaron marcadas erróneamente.\n\n' +
+                '¿Deseas limpiar la cola de pendientes? (No se borrarán visitas, solo se quitará la marca)';
+      if (confirm(msg)) {
+        clearAllPendingSync();
+        alert('✓ Cola de pendientes limpiada. Si después de hoy ves visitas que no aparecen en el sistema, contacta al gerente para revisar.');
+      }
     } else {
       alert('✓ Sincronización completada. Todo al día.');
     }
@@ -1259,6 +1274,14 @@ async function manualSync(){
     setSyncStatus('error');
     alert('No se pudo sincronizar. Verifica tu conexión a internet e intenta de nuevo.');
   }
+}
+
+// Limpia toda la cola de pendientes (uso para visitas fantasma)
+function clearAllPendingSync(){
+  try {
+    localStorage.setItem('bg_pending_sync', '[]');
+    setSyncStatus('online');
+  } catch(e){ console.warn('clearAllPendingSync fallo:', e.message); }
 }
 
 // Reporta el estado de sincronización del visitador al servidor (heartbeat)
@@ -1786,7 +1809,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-17-220330';
+const APP_VERSION = '2026-06-18-164400';
 
 async function checkForUpdates() {
   try {
