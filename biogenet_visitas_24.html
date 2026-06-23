@@ -1571,18 +1571,47 @@ setInterval(function(){
 
 // Fusiona visitas remotas con las locales (sin duplicar)
 function mergeRemoteVisits(remoteVisits){
-  var localIds = new Set(visits.map(function(v){ return v.id; }));
+  // Convertir remoto a Map por id para lookups rápidos
+  var remoteMap = {};
+  for (var i = 0; i < remoteVisits.length; i++) {
+    var r = remoteVisits[i];
+    remoteMap[r.id] = r;
+  }
+  // IDs en cola de pendientes (NO eliminar localmente — aún no subieron)
+  var pendingIds = new Set((function(){
+    try { return JSON.parse(localStorage.getItem('bg_pending_sync')||'[]')||[]; } catch(e){ return []; }
+  })());
+  // Recorrer visits local y: actualizar si está remoto, eliminar si NO está remoto Y NO está pendiente
+  var updated = 0, removed = 0;
+  var localMap = {};
+  visits.forEach(function(v){ localMap[v.id] = v; });
+  var newVisits = [];
+  visits.forEach(function(v){
+    if (remoteMap[v.id]) {
+      // existe en remoto → reemplazar con versión remota (trae cambios server-side)
+      newVisits.push(remoteMap[v.id]);
+      updated++;
+    } else if (pendingIds.has(v.id)) {
+      // todavía no se ha podido subir → conservar
+      newVisits.push(v);
+    } else {
+      // Estaba en local, no está en remoto, no está pendiente → fue eliminada en server
+      removed++;
+    }
+  });
+  // Agregar visitas remotas que no estaban en local
   var added = 0;
   for (var i = 0; i < remoteVisits.length; i++) {
     var r = remoteVisits[i];
-    if (!localIds.has(r.id)) {
-      visits.push(r);
+    if (!localMap[r.id]) {
+      newVisits.push(r);
       added++;
     }
   }
-  if (added > 0) {
-    save(); // Persistir cambios localmente
-    console.log('Sincronización: ' + added + ' visitas descargadas de la nube');
+  visits = newVisits;
+  if (added > 0 || removed > 0 || updated > 0) {
+    save();
+    console.log('Sync: ' + added + ' nuevas, ' + updated + ' actualizadas, ' + removed + ' eliminadas');
   }
   return added;
 }
@@ -1945,7 +1974,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-23-151413';
+const APP_VERSION = '2026-06-23-154535';
 
 async function checkForUpdates() {
   try {
