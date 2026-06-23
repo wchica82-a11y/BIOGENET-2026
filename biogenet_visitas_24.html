@@ -1974,7 +1974,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-23-155333';
+const APP_VERSION = '2026-06-23-171130';
 
 async function checkForUpdates() {
   try {
@@ -3260,7 +3260,8 @@ async function reqDeleteVisit(visitId){
   if (!confirm('¿Eliminar definitivamente esta visita?\n\n' + nombre + '\nFecha: ' + (v.fecha||''))) return;
   try {
     // 1. DELETE en Supabase (con Prefer: return=representation devuelve las filas eliminadas)
-    var url = SUPABASE_URL + '/rest/v1/visits?id=eq.' + encodeURIComponent(v.id);
+    // OJO: v.id local = client_id en Supabase (la columna 'id' es serial autoincrement)
+    var url = SUPABASE_URL + '/rest/v1/visits?client_id=eq.' + encodeURIComponent(v.id);
     var resp = await fetch(url, {
       method: 'DELETE',
       headers: {
