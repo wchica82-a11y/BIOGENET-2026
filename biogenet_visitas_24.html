@@ -1161,7 +1161,8 @@ function rowToVisit(row){
     noEncontro: !!row.no_encontro,
     comentario: row.comentario || '',
     muestras: row.muestras || [],
-    materiales: row.materiales || []
+    materiales: row.materiales || [],
+    delete_granted_at: row.delete_granted_at || null
   };
 }
 
@@ -1974,7 +1975,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-23-171130';
+const APP_VERSION = '2026-06-23-192700';
 
 async function checkForUpdates() {
   try {
