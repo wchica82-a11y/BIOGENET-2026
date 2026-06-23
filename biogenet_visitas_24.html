@@ -1974,7 +1974,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-23-154535';
+const APP_VERSION = '2026-06-23-155333';
 
 async function checkForUpdates() {
   try {
@@ -3259,8 +3259,28 @@ async function reqDeleteVisit(visitId){
   var nombre = v.tipo_visita === 'farmacia' ? (v.farmacia||'') : (v.medico||'');
   if (!confirm('¿Eliminar definitivamente esta visita?\n\n' + nombre + '\nFecha: ' + (v.fecha||''))) return;
   try {
-    await sbRequest('DELETE', '/visits?id=eq.' + encodeURIComponent(v.id));
-    // Quitar de cache local
+    // 1. DELETE en Supabase (con Prefer: return=representation devuelve las filas eliminadas)
+    var url = SUPABASE_URL + '/rest/v1/visits?id=eq.' + encodeURIComponent(v.id);
+    var resp = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      }
+    });
+    if (!resp.ok) {
+      var txt = await resp.text();
+      throw new Error('HTTP ' + resp.status + ': ' + txt);
+    }
+    var deletedRows = await resp.json();
+    if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
+      // Supabase devolvió OK pero no eliminó nada → probablemente RLS bloqueó
+      alert('No se pudo eliminar. Es posible que falten permisos en la base de datos. Contacta al gerente.');
+      return;
+    }
+    // 2. Quitar de cache local
     visits = visits.filter(function(x){ return String(x.id) !== String(v.id); });
     try { localStorage.setItem('bg_v2', JSON.stringify(visits)); } catch(e){}
     if (typeof renderHist === 'function') renderHist();
