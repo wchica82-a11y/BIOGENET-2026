@@ -544,6 +544,9 @@ textarea{resize:none;height:88px;line-height:1.5}
     <div class="tab" data-tab="g-sync" onclick="swTab(this,'ger-tabs','s-ger')" style="position:relative">
       <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Sync<span id="sync-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#C0392B;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;line-height:18px;border-radius:9px;padding:0 5px;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
     </div>
+    <div class="tab" data-tab="g-delauth" onclick="swTab(this,'ger-tabs','s-ger')">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6v14a2 2 0 002 2h8a2 2 0 002-2V6"/></svg>Eliminar
+    </div>
     <div class="tab" data-tab="g-ciclo" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Ciclo
     </div>
@@ -843,7 +846,31 @@ textarea{resize:none;height:88px;line-height:1.5}
       <div id="g-sync-list"></div>
     </div>
 
-        <!-- CICLO -->
+        <!-- AUTORIZACION DE ELIMINACION DE VISITAS -->
+    <div id="g-delauth" class="panel">
+      <div class="card">
+        <div class="ctitle">🔓 Autorizar eliminación de visitas</div>
+        <p style="font-size:12px;color:var(--t3);margin-bottom:.7rem">Busca la visita que el rep necesita eliminar y dale autorización. El permiso dura 24 horas. El rep verá el botón "Eliminar (autorizado)" en su iPad y podrá borrarla. Si no la borra en 24h, el permiso expira y debe pedírtelo de nuevo.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:8px;margin-bottom:.7rem">
+          <div class="field" style="margin-bottom:0"><label>Representante</label>
+            <select id="delauth-rep"><option value="">— Todos —</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Fecha desde</label>
+            <input type="date" id="delauth-from">
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Fecha hasta</label>
+            <input type="date" id="delauth-to">
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Buscar médico/farmacia</label>
+            <input type="text" id="delauth-search" placeholder="nombre, código...">
+          </div>
+        </div>
+        <button class="btn btn-p" onclick="renderDelAuth()" style="width:auto;padding:9px 16px">🔍 Buscar visitas</button>
+      </div>
+      <div id="delauth-list" style="margin-top:8px"></div>
+    </div>
+
+    <!-- CICLO -->
     <div id="g-ciclo" class="panel">
       <div class="card">
         <div class="ctitle">Configurar ciclo actual</div>
@@ -1322,6 +1349,115 @@ async function reportSyncHeartbeat(){
 
 // Reporta heartbeat cada 5 minutos mientras la app esté abierta
 setInterval(function(){ reportSyncHeartbeat(); }, 5 * 60 * 1000);
+
+// ──────────────────────────────────────
+// AUTORIZACIÓN DE ELIMINACIÓN DE VISITAS (gerente)
+// ──────────────────────────────────────
+function initDelAuth(){
+  var sel = document.getElementById('delauth-rep');
+  if (sel && sel.options.length <= 1) {
+    var reps = Object.keys(PANEL || {}).sort();
+    reps.forEach(function(r){
+      var o = document.createElement('option'); o.value = r; o.textContent = r;
+      sel.appendChild(o);
+    });
+  }
+  var f = document.getElementById('delauth-from');
+  var t = document.getElementById('delauth-to');
+  if (f && !f.value) {
+    var hoy = (typeof todayISO==='function') ? todayISO() : new Date().toISOString().slice(0,10);
+    var ayer7 = new Date(); ayer7.setDate(ayer7.getDate()-7);
+    f.value = ayer7.toISOString().slice(0,10);
+    if (t) t.value = hoy;
+  }
+  renderDelAuth();
+}
+
+async function renderDelAuth(){
+  var listEl = document.getElementById('delauth-list');
+  if (!listEl) return;
+  var rep = document.getElementById('delauth-rep').value;
+  var from = document.getElementById('delauth-from').value;
+  var to = document.getElementById('delauth-to').value;
+  var q = (document.getElementById('delauth-search').value||'').trim().toUpperCase();
+  listEl.innerHTML = '<p style="padding:10px;color:var(--t3)">Cargando...</p>';
+  try {
+    var path = '/visits?order=ts.desc&limit=200';
+    if (rep) path += '&rep=eq.' + encodeURIComponent(rep);
+    if (from) path += '&fecha=gte.' + from;
+    if (to) path += '&fecha=lte.' + to;
+    var rows = await sbRequest('GET', path);
+    if (q) {
+      rows = rows.filter(function(v){
+        var med = (v.medico||'').toUpperCase();
+        var farm = (v.farmacia||'').toUpperCase();
+        var cod = (v.farmacia_cod||'').toString().toUpperCase();
+        return med.indexOf(q)>=0 || farm.indexOf(q)>=0 || cod.indexOf(q)>=0;
+      });
+    }
+    if (!rows.length) {
+      listEl.innerHTML = '<div class="card"><div class="empty"><p>No se encontraron visitas con esos filtros.</p></div></div>';
+      return;
+    }
+    var html = '<div class="card" style="padding:0;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:12.5px">';
+    html += '<thead style="background:#1F4E78;color:#fff"><tr>';
+    html += '<th style="padding:8px;text-align:left">Rep</th>';
+    html += '<th style="padding:8px;text-align:left">Médico / Farmacia</th>';
+    html += '<th style="padding:8px;text-align:left">Fecha</th>';
+    html += '<th style="padding:8px;text-align:center">Permiso</th>';
+    html += '<th style="padding:8px;text-align:center">Acción</th>';
+    html += '</tr></thead><tbody>';
+    var nowMs = Date.now();
+    rows.forEach(function(v){
+      var nombre = v.tipo_visita==='farmacia' ? ('🏪 '+(v.farmacia||'')) : ('👨\u200d⚕️ '+(v.medico||''));
+      var estado = '<span style="color:#9CA3AF">— sin permiso —</span>';
+      var btn = '<button onclick="grantDelete(\''+v.id+'\')" style="padding:5px 10px;border-radius:6px;border:none;background:#1A5C3A;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer">🔓 Permitir eliminar</button>';
+      if (v.delete_granted_at) {
+        var gMs = new Date(v.delete_granted_at).getTime();
+        var horasRest = Math.floor((24*60*60*1000 - (nowMs - gMs))/3600000);
+        if (horasRest > 0) {
+          estado = '<span style="color:#1A5C3A;font-weight:700">✓ Autorizada (' + horasRest + 'h restantes)</span>';
+          btn = '<button onclick="revokeDelete(\''+v.id+'\')" style="padding:5px 10px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11.5px;font-weight:600;cursor:pointer">🔒 Revocar</button>';
+        } else {
+          estado = '<span style="color:#856404">⏱ Permiso expirado</span>';
+        }
+      }
+      html += '<tr style="border-bottom:1px solid #E5E7EB">';
+      html += '<td style="padding:7px">'+(v.rep||'')+'</td>';
+      html += '<td style="padding:7px;font-weight:600">'+nombre+'</td>';
+      html += '<td style="padding:7px">'+(v.fecha||'')+'</td>';
+      html += '<td style="padding:7px;text-align:center">'+estado+'</td>';
+      html += '<td style="padding:7px;text-align:center">'+btn+'</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    listEl.innerHTML = html;
+  } catch(e){
+    listEl.innerHTML = '<p style="color:var(--r);padding:10px">Error: ' + (e.message||e) + '</p>';
+  }
+}
+
+async function grantDelete(visitId){
+  if (!confirm('¿Autorizar al visitador a eliminar esta visita?')) return;
+  try {
+    var body = { delete_granted_at: new Date().toISOString() };
+    await sbRequest('PATCH', '/visits?id=eq.' + encodeURIComponent(visitId), body);
+    renderDelAuth();
+  } catch(e){
+    alert('Error: ' + (e.message||e));
+  }
+}
+
+async function revokeDelete(visitId){
+  if (!confirm('¿Revocar la autorización de eliminación?')) return;
+  try {
+    var body = { delete_granted_at: null };
+    await sbRequest('PATCH', '/visits?id=eq.' + encodeURIComponent(visitId), body);
+    renderDelAuth();
+  } catch(e){
+    alert('Error: ' + (e.message||e));
+  }
+}
 
 // Actualiza el badge rojo de la pestaña Sync con la cantidad de reps con pendientes
 async function updateSyncBadge(){
@@ -1809,7 +1945,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-18-164400';
+const APP_VERSION = '2026-06-23-151413';
 
 async function checkForUpdates() {
   try {
@@ -2503,6 +2639,7 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-disp'){ initDispositivosPanel(); }
   if(el.dataset.tab==='g-diario'){ initDiarioMes(); renderDiario(); }
   if(el.dataset.tab==='g-sync'){ renderSyncStatus(); }
+  if(el.dataset.tab==='g-delauth'){ initDelAuth(); }
   if(el.dataset.tab==='g-ne') renderNE();
   if(el.dataset.tab==='g-ciclo'){ renderCycleInfo(); renderMatAdmin(); }
   if(el.dataset.tab==='g-muestras'){ 
@@ -3012,6 +3149,29 @@ function renderHist(){
   }
 }
 
+function deleteBtnHTML(v){
+  // Solo mostrar para el rep dueño y solo si tipo_visita es medico o farmacia
+  if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
+  var DELETE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
+  var GRANT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 horas
+  var nowMs = Date.now();
+  var tsMs = v.ts ? new Date(v.ts).getTime() : (v.fecha ? new Date(v.fecha).getTime() : nowMs);
+  var withinWindow = (nowMs - tsMs) < DELETE_WINDOW_MS;
+  var hasGrant = false;
+  if (v.delete_granted_at) {
+    var grantMs = new Date(v.delete_granted_at).getTime();
+    hasGrant = (nowMs - grantMs) < GRANT_WINDOW_MS;
+  }
+  if (withinWindow) {
+    var mins = Math.floor((DELETE_WINDOW_MS - (nowMs - tsMs)) / 60000);
+    var lbl = mins >= 60 ? Math.floor(mins/60)+'h '+(mins%60)+'m' : mins+'m';
+    return '<button onclick="reqDeleteVisit(\''+v.id+'\')" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">🗑️ Eliminar (queda '+lbl+')</button>';
+  } else if (hasGrant) {
+    return '<button onclick="reqDeleteVisit(\''+v.id+'\')" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F4EE;color:#1A5C3A;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">🗑️ Eliminar (autorizado por gerente)</button>';
+  } else {
+    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Para eliminar, pide autorización al gerente</div>';
+  }
+}
 function vcardHTML(v, clickable){
   // Farmacia visit card
   if (v.tipo_visita === 'farmacia') {
@@ -3029,6 +3189,7 @@ function vcardHTML(v, clickable){
         ${v.objetivo?`<span class="tag tg">${v.objetivo}</span>`:''}
       </div>
       ${v.comentario?`<div class="vccmt">💬 ${v.comentario}</div>`:''}
+      ${deleteBtnHTML(v)}
     </div>`;
   }
   // Médico visit card
@@ -3041,7 +3202,43 @@ function vcardHTML(v, clickable){
     </div>
     <div class="tags">${tipoTag}<span class="tag tb">${v.resultado||''}</span>${muestras}</div>
     ${v.comentario?`<div class="vccmt">💬 ${v.comentario}</div>`:''}
+    ${deleteBtnHTML(v)}
   </div>`;
+}
+
+// ──────────────────────────────────────
+// ELIMINACIÓN DE VISITAS (visitador)
+// ──────────────────────────────────────
+async function reqDeleteVisit(visitId){
+  var v = visits.find(function(x){ return String(x.id) === String(visitId); });
+  if (!v) { alert('Visita no encontrada localmente'); return; }
+  // Validar permiso
+  var DELETE_WINDOW_MS = 2 * 60 * 60 * 1000;
+  var GRANT_WINDOW_MS = 24 * 60 * 60 * 1000;
+  var nowMs = Date.now();
+  var tsMs = v.ts ? new Date(v.ts).getTime() : nowMs;
+  var withinWindow = (nowMs - tsMs) < DELETE_WINDOW_MS;
+  var hasGrant = false;
+  if (v.delete_granted_at) {
+    var grantMs = new Date(v.delete_granted_at).getTime();
+    hasGrant = (nowMs - grantMs) < GRANT_WINDOW_MS;
+  }
+  if (!withinWindow && !hasGrant) {
+    alert('Esta visita ya no se puede eliminar. Pide autorización al gerente.');
+    return;
+  }
+  var nombre = v.tipo_visita === 'farmacia' ? (v.farmacia||'') : (v.medico||'');
+  if (!confirm('¿Eliminar definitivamente esta visita?\n\n' + nombre + '\nFecha: ' + (v.fecha||''))) return;
+  try {
+    await sbRequest('DELETE', '/visits?id=eq.' + encodeURIComponent(v.id));
+    // Quitar de cache local
+    visits = visits.filter(function(x){ return String(x.id) !== String(v.id); });
+    try { localStorage.setItem('bg_v2', JSON.stringify(visits)); } catch(e){}
+    if (typeof renderHist === 'function') renderHist();
+    alert('✓ Visita eliminada');
+  } catch(e){
+    alert('Error: ' + (e.message||e));
+  }
 }
 
 // ── MODAL ──
