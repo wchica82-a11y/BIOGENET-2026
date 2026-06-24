@@ -1976,7 +1976,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-24-112000';
+const APP_VERSION = '2026-06-24-153000';
 
 async function checkForUpdates() {
   try {
@@ -5997,4 +5997,73 @@ function estadoColor(estado){
   if (estado==='aprobado') return '#1A5C3A';
   if (estado==='facturado') return '#1565C0';
   if (estado==='enviado_distribuidor') return '#6A1B9A';
-  if (e
+  if (estado==='cancelado') return '#C0392B';
+  return '#C47A0A';
+}
+
+function renderGerPedidos(){
+  var list = gerPedFiltered();
+  var resumen = document.getElementById('gp-resumen');
+  var totalMonto = list.reduce(function(a,p){ return a + (p.total||0); }, 0);
+  if (resumen) resumen.textContent = list.length + ' pedido(s) · Total ' + fmtMoney(totalMonto);
+  var el = document.getElementById('gp-list');
+  if (!el) return;
+  if (!list.length){ el.innerHTML = '<p style="font-size:12.5px;color:var(--t3);padding:13px">Sin pedidos para los filtros.</p>'; return; }
+  el.innerHTML = list.map(function(p){
+    var estCol = estadoColor(p.estado);
+    var nItems = (p.items||[]).length;
+    var btns = '';
+    if (FACTURACION_MODE) {
+      if (p.distribuidor === 'directo' && p.estado !== 'facturado' && p.estado !== 'cancelado') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'facturado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1565C0;background:#E3F0FF;color:#1565C0;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4D1} Marcar como Facturado</button>';
+      } else if ((p.distribuidor === 'boticas_unidas' || p.distribuidor === 'difare') && p.estado !== 'enviado_distribuidor' && p.estado !== 'cancelado') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'enviado_distribuidor\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #6A1B9A;background:#F3E5F5;color:#6A1B9A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E4} Marcar como Enviado al distribuidor</button>';
+      }
+    } else {
+      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'aprobado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F5E9;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">✅ Aprobar</button>';
+      if (p.distribuidor === 'directo') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'facturado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1565C0;background:#E3F0FF;color:#1565C0;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4D1} Facturado</button>';
+      } else if (p.distribuidor === 'boticas_unidas' || p.distribuidor === 'difare') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'enviado_distribuidor\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #6A1B9A;background:#F3E5F5;color:#6A1B9A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E4} Enviado a distribuidor</button>';
+      }
+      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'cancelado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#FBE9E7;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">❌ Cancelar</button>';
+    }
+    return '<div style="padding:10px 11px;border-bottom:1px solid #eef2ef">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:700;font-size:13px">'+(p.razon_social||'(sin cliente)')+'</div>' +
+          '<div style="font-size:11.5px;color:var(--t3);margin-top:2px">'+p.rep+' · '+distLabel(p.distribuidor)+' · '+(p.fecha||'')+' · '+nItems+' items · <b>'+fmtMoney(p.total||0)+'</b></div>' +
+        '</div>' +
+        '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px">'+estadoLabel(p.estado||'enviado')+'</div>' +
+      '</div>' +
+      '<div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:5px">' +
+        '<button onclick="gerPedExport(\''+p.id+'\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11.5px;cursor:pointer;font-family:var(--f)">⬇️ Excel</button>' +
+        btns +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function gerPedExport(id){
+  var p = PEDIDOS_CACHE.find(function(x){ return String(x.id)===String(id); });
+  if (!p) return;
+  generarYDescargarExcel(p);
+}
+
+async function gerPedEstado(id, estado){
+  try {
+    var body = { estado: estado };
+    if (estado==='aprobado'){ body.aprobado_por = CU; body.aprobado_at = new Date().toISOString(); }
+    await sbRequest('PATCH', '/pedidos?id=eq.' + encodeURIComponent(id), body);
+    var p = PEDIDOS_CACHE.find(function(x){ return String(x.id)===String(id); });
+    if (p){ p.estado = estado; if (estado==='aprobado'){ p.aprobado_por=CU; p.aprobado_at = new Date().toISOString(); } }
+    renderGerPedidos();
+    if (typeof showToast==='function') showToast('Estado actualizado: ' + estado);
+  } catch(e){
+    if (typeof showToast==='function') showToast('Error: ' + e.message);
+  }
+}
+
+</script>
+</body>
+</html>
