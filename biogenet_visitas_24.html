@@ -1018,6 +1018,7 @@ textarea{resize:none;height:88px;line-height:1.5}
               <option value="enviado">Enviado</option>
               <option value="aprobado">Aprobado</option>
               <option value="facturado">Facturado</option>
+              <option value="enviado_distribuidor">Enviado al distribuidor</option>
               <option value="cancelado">Cancelado</option>
             </select>
           </div>
@@ -1975,7 +1976,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-23-192700';
+const APP_VERSION = '2026-06-24-094500';
 
 async function checkForUpdates() {
   try {
@@ -3014,6 +3015,23 @@ function guardar(){
   err.style.display='none';
   const res=document.querySelector('#result-chips .chip.on')?.textContent||'Contacto efectivo';
   const noEncontro=(res==='No lo encontré');
+  // ── GPS obligatorio (la primera vez por médico) ──
+  try {
+    var _yaTieneGps = (typeof ubicHas === 'function') ? ubicHas('medico', CU, selDoc.nombre) : false;
+    var _gpsSesion = (typeof GPS_TEMP !== 'undefined' && GPS_TEMP.medico) ? true : false;
+    if (!_yaTieneGps && !_gpsSesion) {
+      err.style.display = 'block';
+      err.textContent = '📍 Captura la ubicación GPS del médico antes de registrar la visita. Es obligatorio la primera vez.';
+      err.scrollIntoView({behavior:'smooth',block:'center'});
+      var _gpsBox = document.getElementById('gps-med');
+      if (_gpsBox) {
+        _gpsBox.style.outline = '2px solid #C0392B';
+        setTimeout(function(){ _gpsBox.style.outline = ''; }, 3000);
+      }
+      if (typeof showToast==='function') showToast('📍 Falta capturar GPS del médico');
+      return;
+    }
+  } catch(e){ /* si algo falla en la validación, no bloqueamos */ }
   // Cycle duplicate check — only for effective contacts
   if(!noEncontro){
     const cyc=getCycle();
@@ -3199,7 +3217,7 @@ function deleteBtnHTML(v){
   } else if (hasGrant) {
     return '<button onclick="reqDeleteVisit(\''+v.id+'\')" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F4EE;color:#1A5C3A;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">🗑️ Eliminar (autorizado por gerente)</button>';
   } else {
-    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Para eliminar, pide autorización al gerente</div>';
+    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Solicitar autorización para eliminar el registro</div>';
   }
 }
 function vcardHTML(v, clickable){
@@ -4877,6 +4895,32 @@ var GPS_LIST_CACHE = [];
 function ubicKey(tipo, refId){ return tipo + ':' + refId; }
 function medRefId(rep, nombre){ return rep + '||' + nombre; }
 
+// ── Normalización para comparación robusta (quita acentos, espacios extra, mayúsculas) ──
+function normGpsName(s){
+  if (!s) return '';
+  return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+}
+function ubicHas(tipo, rep, nombreOCod){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  if (tipo === 'medico') {
+    return !!UBIC_NORM_IDX['medico:' + (rep||'') + '||' + normGpsName(nombreOCod)];
+  }
+  return !!UBIC_NORM_IDX['farmacia:' + String(nombreOCod||'')];
+}
+function rebuildUbicIndex(){
+  UBIC_NORM_IDX = {};
+  Object.keys(UBIC_CACHE).forEach(function(k){
+    var u = UBIC_CACHE[k];
+    if (!u || !u.tipo) return;
+    if (u.tipo === 'medico') {
+      UBIC_NORM_IDX['medico:' + (u.rep||'') + '||' + normGpsName(u.nombre||'')] = u;
+    } else if (u.tipo === 'farmacia') {
+      UBIC_NORM_IDX['farmacia:' + String(u.ref_id||'')] = u;
+    }
+  });
+}
+var UBIC_NORM_IDX = null;
+
 function saveUbicLocal(){ try{ localStorage.setItem('bg_ubic_cache', JSON.stringify(UBIC_CACHE)); }catch(e){} }
 (function(){ try{ var c=localStorage.getItem('bg_ubic_cache'); if(c) UBIC_CACHE=JSON.parse(c)||{}; }catch(e){ UBIC_CACHE={}; } })();
 
@@ -4890,6 +4934,7 @@ async function loadUbicaciones(rep){
   if (Array.isArray(rows)){
     rows.forEach(function(r){ UBIC_CACHE[ubicKey(r.tipo, r.ref_id)] = r; });
     saveUbicLocal();
+    rebuildUbicIndex();
   }
   return rows;
 }
@@ -4964,6 +5009,7 @@ function guardarUbicacion(tipo){
   }
   UBIC_CACHE[ubicKey(tipo,refId)] = payload;
   saveUbicLocal();
+  rebuildUbicIndex();
   renderGpsProgress();
   pushUbicacion(payload).then(function(){
     retryUbicPending();
@@ -4985,7 +5031,17 @@ function gpsOnSelect(tipo){
   var refId = tipo==='medico'
     ? (selDoc ? medRefId(CU, selDoc.nombre) : null)
     : (selFarm ? String(selFarm.cod) : null);
+  // Buscar primero por clave exacta; si no, por clave normalizada
   var existing = refId ? UBIC_CACHE[ubicKey(tipo,refId)] : null;
+  if (!existing) {
+    if (tipo === 'medico' && selDoc) {
+      var k = 'medico:' + CU + '||' + normGpsName(selDoc.nombre);
+      existing = (UBIC_NORM_IDX || {})[k] || null;
+    } else if (tipo === 'farmacia' && selFarm) {
+      var k2 = 'farmacia:' + String(selFarm.cod);
+      existing = (UBIC_NORM_IDX || {})[k2] || null;
+    }
+  }
   box.style.display = '';
   btn.disabled = false;
   if (existing){
@@ -5022,8 +5078,8 @@ function renderGpsProgress(){
   var fkey = (typeof farmPanelKey==='function') ? farmPanelKey(CU) : CU;
   var fpanel = (typeof FARM_PANEL!=='undefined' && FARM_PANEL[fkey]) ? FARM_PANEL[fkey] : [];
   var medCap=0, farmCap=0;
-  panel.forEach(function(d){ if(UBIC_CACHE[ubicKey('medico',medRefId(CU,d.nombre))]) medCap++; });
-  fpanel.forEach(function(f){ if(UBIC_CACHE[ubicKey('farmacia',String(f.cod))]) farmCap++; });
+  panel.forEach(function(d){ if(ubicHas('medico',CU,d.nombre)) medCap++; });
+  fpanel.forEach(function(f){ if(ubicHas('farmacia',null,String(f.cod))) farmCap++; });
   var medTot=panel.length, farmTot=fpanel.length;
   if (medTot+farmTot===0){ if(card) card.style.display='none'; return; }
   if (card) card.style.display='';
@@ -5639,10 +5695,10 @@ function generarYDescargarExcel(ped){
 }
 
 // Estilos reutilizables para los Excel de pedidos
-var XS_BORDER = { style: 'thin', color: { rgb: '999999' } };
+var XS_BORDER = { style: 'thin', color: { rgb: '000000' } };
 var XS_BORDER_ALL = { top: XS_BORDER, bottom: XS_BORDER, left: XS_BORDER, right: XS_BORDER };
 var XS_TITLE = { font: { bold: true, sz: 14, color: { rgb: '1A5C3A' } }, alignment: { horizontal: 'left', vertical: 'center' } };
-var XS_LABEL = { font: { bold: true, sz: 10, color: { rgb: '424A45' } }, alignment: { vertical: 'center' } };
+var XS_LABEL = { font: { bold: true, sz: 10, color: { rgb: '424A45' } }, alignment: { vertical: 'center' }, border: XS_BORDER_ALL };
 var XS_HEADER = { font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1A5C3A' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: XS_BORDER_ALL };
 var XS_CELL  = { font: { sz: 10 }, alignment: { vertical: 'center' }, border: XS_BORDER_ALL };
 var XS_TOTAL = { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: 'EAF2EC' } }, border: XS_BORDER_ALL, alignment: { horizontal: 'right', vertical: 'center' } };
@@ -5723,27 +5779,27 @@ function wsDirecto(ped){
 
 function wsBuca(ped){
   var ws = {};
-  ws['!ref'] = 'A1:F50';
+  ws['!ref'] = 'A1:E50';
   xsSet(ws, 'A1', 'BIOGENET', XS_TITLE);
   ws['!merges'] = ws['!merges'] || [];
-  ws['!merges'].push({ s:{r:0,c:0}, e:{r:0,c:5} });
-  xsSet(ws, 'E3', 'FECHA:', XS_LABEL);
-  xsSet(ws, 'F3', ped.fecha || '', XS_CELL);
+  ws['!merges'].push({ s:{r:0,c:0}, e:{r:0,c:4} });
+  xsSet(ws, 'D3', 'FECHA:', XS_LABEL);
+  xsSet(ws, 'E3', ped.fecha || '', XS_CELL);
   xsSet(ws, 'A5', 'CLIENTE:', XS_LABEL);
   xsSet(ws, 'B5', ped.razon_social || '', XS_CELL);
-  xsSet(ws, 'E5', 'NOTA DE PEDIDO', { font:{bold:true,sz:10}, alignment:{horizontal:'center'}, border:XS_BORDER_ALL, fill:{fgColor:{rgb:'FFF4DA'}} });
+  xsSet(ws, 'D5', 'NOTA DE PEDIDO', { font:{bold:true,sz:10}, alignment:{horizontal:'center'}, border:XS_BORDER_ALL, fill:{fgColor:{rgb:'FFF4DA'}} });
   xsSet(ws, 'A6', 'R.U.C.:', XS_LABEL);
   xsSet(ws, 'B6', ped.ruc || '', XS_CELL);
   xsSet(ws, 'A7', 'DIRECCION:', XS_LABEL);
   xsSet(ws, 'B7', ped.direccion || '', XS_CELL);
   xsSet(ws, 'A8', 'CIUDAD:', XS_LABEL);
   xsSet(ws, 'B8', ped.ciudad || '', XS_CELL);
-  xsSet(ws, 'E8', 'DISTRIBUIDOR:', XS_LABEL);
-  xsSet(ws, 'F8', 'BOTICAS UNIDAS', { font:{bold:true,sz:11,color:{rgb:'1565C0'}}, alignment:{horizontal:'center'}, border:XS_BORDER_ALL });
+  xsSet(ws, 'D8', 'DISTRIBUIDOR:', XS_LABEL);
+  xsSet(ws, 'E8', 'BOTICAS UNIDAS', { font:{bold:true,sz:11,color:{rgb:'1565C0'}}, alignment:{horizontal:'center'}, border:XS_BORDER_ALL });
   xsSet(ws, 'A9', 'REPRESENTANTE:', XS_LABEL);
   xsSet(ws, 'B9', ped.rep || '', XS_CELL);
   var R = 10;
-  ['CANTIDAD','DESCUENTO %','PRODUCTOS','P.V.F. BIOGENET','PRECIO A FACTURAR POR BUCA','VALOR TOTAL'].forEach(function(h,i){
+  ['CANTIDAD','PRODUCTOS','P.V.F. BIOGENET','PRECIO A FACTURAR POR BUCA','VALOR TOTAL'].forEach(function(h,i){
     xsSet(ws, xsAddr(R,i), h, XS_HEADER);
   });
   R++;
@@ -5752,24 +5808,23 @@ function wsBuca(ped){
     if (!it.cantidad) return;
     total += it.valor_total;
     xsSet(ws, xsAddr(R,0), it.cantidad, Object.assign({}, XS_CELL, {alignment:{horizontal:'center',vertical:'center'}}));
-    xsSet(ws, xsAddr(R,1), it.desc, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '0.00%');
-    xsSet(ws, xsAddr(R,2), it.nombre, XS_CELL);
-    xsSet(ws, xsAddr(R,3), it.pvf, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '$#,##0.00');
-    xsSet(ws, xsAddr(R,4), it.precio_unit, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '$#,##0.00');
-    xsSet(ws, xsAddr(R,5), it.valor_total, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '$#,##0.00');
+    xsSet(ws, xsAddr(R,1), it.nombre, XS_CELL);
+    xsSet(ws, xsAddr(R,2), it.pvf, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '$#,##0.00');
+    xsSet(ws, xsAddr(R,3), it.precio_unit, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '$#,##0.00');
+    xsSet(ws, xsAddr(R,4), it.valor_total, Object.assign({}, XS_CELL, {alignment:{horizontal:'right',vertical:'center'}}), '$#,##0.00');
     R++;
   });
   R++;
-  xsSet(ws, xsAddr(R,4), 'VALOR TOTAL', XS_TOTAL_LBL);
-  xsSet(ws, xsAddr(R,5), total, XS_TOTAL, '$#,##0.00');
+  xsSet(ws, xsAddr(R,3), 'VALOR TOTAL', XS_TOTAL_LBL);
+  xsSet(ws, xsAddr(R,4), total, XS_TOTAL, '$#,##0.00');
   if (ped.comentario){
     R += 2;
     xsSet(ws, xsAddr(R,0), 'OBSERVACIONES:', XS_LABEL);
     xsSet(ws, xsAddr(R,1), ped.comentario, XS_CELL);
-    ws['!merges'].push({ s:{r:R,c:1}, e:{r:R,c:5} });
+    ws['!merges'].push({ s:{r:R,c:1}, e:{r:R,c:4} });
   }
-  ws['!ref'] = 'A1:F' + (R+2);
-  ws['!cols'] = [{wch:12},{wch:13},{wch:46},{wch:16},{wch:22},{wch:16}];
+  ws['!ref'] = 'A1:E' + (R+2);
+  ws['!cols'] = [{wch:12},{wch:46},{wch:16},{wch:22},{wch:16}];
   return ws;
 }
 
@@ -5834,14 +5889,16 @@ function renderMisPedidos(){
     return;
   }
   el.innerHTML = mis.map(function(p){
-    var estCol = p.estado==='aprobado'?'#1A5C3A':(p.estado==='facturado'?'#1565C0':(p.estado==='cancelado'?'#C0392B':'#C47A0A'));
+    var estCol = (typeof estadoColor==='function') ? estadoColor(p.estado)
+      : (p.estado==='aprobado'?'#1A5C3A':(p.estado==='facturado'?'#1565C0':(p.estado==='enviado_distribuidor'?'#6A1B9A':(p.estado==='cancelado'?'#C0392B':'#C47A0A'))));
+    var estTxt = (typeof estadoLabel==='function') ? estadoLabel(p.estado||'enviado') : (p.estado||'enviado').toUpperCase();
     return '<div style="padding:9px 10px;border-bottom:1px solid #eef2ef">' +
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start">' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-weight:700;font-size:13px">'+(p.razon_social||'sin cliente')+'</div>' +
           '<div style="font-size:11.5px;color:var(--t3);margin-top:2px">'+distLabel(p.distribuidor)+' · '+(p.fecha||'')+' · '+(p.items?p.items.length:0)+' items · '+fmtMoney(p.total||0)+'</div>' +
         '</div>' +
-        '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px">'+(p.estado||'enviado')+'</div>' +
+        '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px;white-space:nowrap">'+estTxt+'</div>' +
       '</div>' +
       '<div style="margin-top:6px;display:flex;gap:6px">' +
         '<button onclick="reEnviarPedido(\''+p.id+'\')" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E7} Re-enviar correo</button>' +
@@ -5887,6 +5944,25 @@ function gerPedFiltered(){
   });
 }
 
+function estadoLabel(estado){
+  switch(estado){
+    case 'facturado': return 'FACTURADO';
+    case 'enviado_distribuidor': return 'ENVIADO A DISTRIBUIDOR';
+    case 'aprobado': return 'APROBADO';
+    case 'cancelado': return 'CANCELADO';
+    case 'enviado': return 'ENVIADO';
+    case 'borrador': return 'BORRADOR';
+    default: return (estado||'').toUpperCase();
+  }
+}
+function estadoColor(estado){
+  if (estado==='aprobado') return '#1A5C3A';
+  if (estado==='facturado') return '#1565C0';
+  if (estado==='enviado_distribuidor') return '#6A1B9A';
+  if (estado==='cancelado') return '#C0392B';
+  return '#C47A0A';
+}
+
 function renderGerPedidos(){
   var list = gerPedFiltered();
   var resumen = document.getElementById('gp-resumen');
@@ -5896,23 +5972,38 @@ function renderGerPedidos(){
   if (!el) return;
   if (!list.length){ el.innerHTML = '<p style="font-size:12.5px;color:var(--t3);padding:13px">Sin pedidos para los filtros.</p>'; return; }
   el.innerHTML = list.map(function(p){
-    var estCol = p.estado==='aprobado'?'#1A5C3A':(p.estado==='facturado'?'#1565C0':(p.estado==='cancelado'?'#C0392B':'#C47A0A'));
+    var estCol = estadoColor(p.estado);
     var nItems = (p.items||[]).length;
+    // Botones según rol y distribuidor
+    var btns = '';
+    if (FACTURACION_MODE) {
+      // FACTURACION solo marca el estado final según distribuidor
+      if (p.distribuidor === 'directo' && p.estado !== 'facturado' && p.estado !== 'cancelado') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'facturado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1565C0;background:#E3F0FF;color:#1565C0;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4D1} Marcar como Facturado</button>';
+      } else if ((p.distribuidor === 'boticas_unidas' || p.distribuidor === 'difare') && p.estado !== 'enviado_distribuidor' && p.estado !== 'cancelado') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'enviado_distribuidor\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #6A1B9A;background:#F3E5F5;color:#6A1B9A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E4} Marcar como Enviado al distribuidor</button>';
+      }
+    } else {
+      // GERENTE ve todos los botones
+      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'aprobado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F5E9;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">✅ Aprobar</button>';
+      if (p.distribuidor === 'directo') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'facturado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1565C0;background:#E3F0FF;color:#1565C0;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4D1} Facturado</button>';
+      } else if (p.distribuidor === 'boticas_unidas' || p.distribuidor === 'difare') {
+        btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'enviado_distribuidor\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #6A1B9A;background:#F3E5F5;color:#6A1B9A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E4} Enviado a distribuidor</button>';
+      }
+      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'cancelado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#FBE9E7;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">❌ Cancelar</button>';
+    }
     return '<div style="padding:10px 11px;border-bottom:1px solid #eef2ef">' +
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start">' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-weight:700;font-size:13px">'+(p.razon_social||'(sin cliente)')+'</div>' +
           '<div style="font-size:11.5px;color:var(--t3);margin-top:2px">'+p.rep+' · '+distLabel(p.distribuidor)+' · '+(p.fecha||'')+' · '+nItems+' items · <b>'+fmtMoney(p.total||0)+'</b></div>' +
         '</div>' +
-        '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px">'+(p.estado||'enviado')+'</div>' +
+        '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px">'+estadoLabel(p.estado||'enviado')+'</div>' +
       '</div>' +
       '<div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:5px">' +
         '<button onclick="gerPedExport(\''+p.id+'\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11.5px;cursor:pointer;font-family:var(--f)">⬇️ Excel</button>' +
-        (FACTURACION_MODE ? '' :
-          '<button onclick="gerPedEstado(\''+p.id+'\',\'aprobado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F5E9;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">✅ Aprobar</button>' +
-          '<button onclick="gerPedEstado(\''+p.id+'\',\'facturado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1565C0;background:#E3F0FF;color:#1565C0;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4D1} Facturado</button>' +
-          '<button onclick="gerPedEstado(\''+p.id+'\',\'cancelado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#FBE9E7;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">❌ Cancelar</button>'
-        ) +
+        btns +
       '</div>' +
     '</div>';
   }).join('');
