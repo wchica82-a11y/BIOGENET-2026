@@ -514,9 +514,6 @@ textarea{resize:none;height:88px;line-height:1.5}
     <div class="tab on" data-tab="g-cob" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Cobertura
     </div>
-    <div class="tab" data-tab="g-res" onclick="swTab(this,'ger-tabs','s-ger')">
-      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Resumen
-    </div>
     <div class="tab" data-tab="g-vis" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Visitas
     </div>
@@ -595,15 +592,6 @@ textarea{resize:none;height:88px;line-height:1.5}
       </div>
     </div>
 
-    <!-- RESUMEN -->
-    <div id="g-res" class="panel">
-      <div class="stats" id="g-stats" style="grid-template-columns:repeat(3,1fr)"></div>
-      <div class="card">
-        <div class="ctitle">Actividad del mes — por representante</div>
-        <div id="g-activity"></div>
-      </div>
-    </div>
-
     <!-- TODAS LAS VISITAS -->
     <div id="g-vis" class="panel">
       <div class="card" style="margin-bottom:.9rem">
@@ -631,7 +619,7 @@ textarea{resize:none;height:88px;line-height:1.5}
             <select id="gv-resultado" onchange="renderGVis()">
               <option value="efectivo">Solo contactos efectivos</option>
               <option value="">Todos (incluye no encontrados)</option>
-              <option value="no_encontrado">Solo no encontrados</option>
+              <option value="no_visitados">No visitados</option>
             </select>
           </div>
         </div>
@@ -1976,7 +1964,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-06-24-153000';
+const APP_VERSION = '2026-06-28-201500';
 
 async function checkForUpdates() {
   try {
@@ -2692,7 +2680,6 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='t-hist') renderHist();
   if(el.dataset.tab==='t-mues') initMuestrasRecibidas();
   if(el.dataset.tab==='g-cob'){ initCobCicloFilter(); renderCobertura(); }
-  if(el.dataset.tab==='g-res') renderGRes();
   if(el.dataset.tab==='g-vis'){ initGVisCiclos(); renderGVis(); }
   if(el.dataset.tab==='g-disp'){ initDispositivosPanel(); }
   if(el.dataset.tab==='g-diario'){ initDiarioMes(); renderDiario(); }
@@ -3353,7 +3340,7 @@ function renderGer(){
       gvr.appendChild(o);
     });
   }
-  renderCobertura(); renderGRes(); renderGVis();
+  renderCobertura(); renderGVis();
   // Cargar info de dispositivos en background
   if (typeof loadDeviceTokens === 'function') loadDeviceTokens();
   initDiarioMes(); renderCycleInfo(); initNESelects();
@@ -3572,27 +3559,30 @@ function renderGVis(){
   const ciclo = document.getElementById('gv-ciclo')?.value||'';
   const tipo = document.getElementById('gv-tipo')?.value||'';
   const resFil = document.getElementById('gv-resultado')?.value||'efectivo';
-  
-  // Filtro base: por ciclo (rango de fechas)
-  let f = visits.slice();
+
+  // Resolver ciclo seleccionado
+  let cy = null;
   let cicloLabel = 'Todos los ciclos';
   if (ciclo) {
     const cicloNum = parseInt(ciclo);
-    const cy = (CYCLE && CYCLE.num === cicloNum) ? CYCLE : (CYCLES_HISTORY||[]).find(function(c){ return c.num === cicloNum; });
-    if (cy) {
-      f = f.filter(function(v){ return v.fecha >= cy.ini && v.fecha <= cy.fin; });
-      cicloLabel = 'Ciclo ' + cy.num + ' (' + fmtShort(cy.ini) + ' → ' + fmtShort(cy.fin) + ')';
-    }
+    cy = (CYCLE && CYCLE.num === cicloNum) ? CYCLE : (CYCLES_HISTORY||[]).find(function(c){ return c.num === cicloNum; });
+    if (cy) cicloLabel = 'Ciclo ' + cy.num + ' (' + fmtShort(cy.ini) + ' → ' + fmtShort(cy.fin) + ')';
   }
+
+  // === BRANCH 1: No visitados ===
+  if (resFil === 'no_visitados') { renderNoVisitados(rep, cy, tipo, q, cicloLabel); return; }
+
+  // Filtro base: por ciclo (rango de fechas)
+  let f = visits.slice();
+  if (cy) f = f.filter(function(v){ return v.fecha >= cy.ini && v.fecha <= cy.fin; });
   // Filtros adicionales
   if (rep) f = f.filter(function(v){ return v.rep === rep; });
   if (tipo === 'medico') f = f.filter(function(v){ return v.tipo_visita !== 'farmacia'; });
   else if (tipo === 'farmacia') f = f.filter(function(v){ return v.tipo_visita === 'farmacia'; });
   if (resFil === 'efectivo') f = f.filter(function(v){ return !v.noEncontro; });
-  else if (resFil === 'no_encontrado') f = f.filter(function(v){ return v.noEncontro; });
   if (q) f = f.filter(function(v){
-    return (v.medico||'').toUpperCase().includes(q) || 
-           (v.farmacia||'').toUpperCase().includes(q) || 
+    return (v.medico||'').toUpperCase().includes(q) ||
+           (v.farmacia||'').toUpperCase().includes(q) ||
            (v.ciudad||'').toUpperCase().includes(q) ||
            v.rep.toUpperCase().includes(q);
   });
@@ -3626,43 +3616,9 @@ function renderGVis(){
     return;
   }
   
-  // Si hay rep seleccionado, mostrar tabla detallada
+  // Si hay rep seleccionado, mostrar agrupado por médico/farmacia
   if (rep) {
-    const filas = f.slice(0, 500).map(function(v){
-      const tipoIcon = v.tipo_visita === 'farmacia' ? '🏪' : '👨‍⚕️';
-      const nombre = v.tipo_visita === 'farmacia' ? v.farmacia : v.medico;
-      const detalle = v.tipo_visita === 'farmacia' ? (v.cadena + ' · ' + v.ciudad) : ((v.especialidad||'') + ' · ' + (v.ciudad||''));
-      const resColor = v.noEncontro ? 'var(--r)' : '#1A5C3A';
-      const resTxt = v.noEncontro ? '❌ No encontrado' : '✓ Efectivo';
-      const muestrasTxt = (v.muestras||[]).length > 0 
-        ? (v.muestras||[]).filter(function(m){ return typeof m === 'object'; }).map(function(m){ return m.producto + ':' + (m.cantidad||1); }).join(', ')
-        : '—';
-      const matsTxt = (v.materiales||[]).length > 0
-        ? (v.materiales||[]).filter(function(m){ return typeof m === 'object'; }).map(function(m){ return m.material + ':' + (m.cantidad||1); }).join(', ')
-        : '—';
-      const cmt = v.comentario ? '<div style="font-size:11px;color:var(--t2);margin-top:4px;line-height:1.4">💬 ' + esc_(v.comentario) + '</div>' : '';
-      
-      return '<tr style="border-bottom:1px solid var(--b)">' +
-        '<td style="padding:8px 10px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap">' + fmtShort(v.fecha) + '</td>' +
-        '<td style="padding:8px 10px;font-size:12px">' + tipoIcon + '</td>' +
-        '<td style="padding:8px 10px;font-size:13px"><b>' + esc_(nombre || '—') + '</b><div style="font-size:11px;color:var(--t3);margin-top:2px">' + esc_(detalle) + '</div>' + cmt + '</td>' +
-        '<td style="padding:8px 10px;font-size:11px;color:' + resColor + ';font-weight:600;white-space:nowrap">' + resTxt + '</td>' +
-        '<td style="padding:8px 10px;font-size:11px;color:var(--t2);max-width:300px">' + esc_(muestrasTxt) + '</td>' +
-        '<td style="padding:8px 10px;font-size:11px;color:var(--t2);max-width:200px">' + esc_(matsTxt) + '</td>' +
-        '</tr>';
-    }).join('');
-    
-    el.innerHTML = '<div class="card" style="padding:0;overflow:hidden">' +
-      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--f)">' +
-      '<thead><tr style="background:var(--s2);border-bottom:2px solid var(--b)">' +
-        '<th style="padding:10px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;text-align:left;white-space:nowrap">Fecha</th>' +
-        '<th style="padding:10px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;text-align:left">Tipo</th>' +
-        '<th style="padding:10px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;text-align:left">Médico / Farmacia</th>' +
-        '<th style="padding:10px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;text-align:left">Resultado</th>' +
-        '<th style="padding:10px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;text-align:left">Muestras entregadas</th>' +
-        '<th style="padding:10px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;text-align:left">Materiales</th>' +
-      '</tr></thead><tbody>' + filas + '</tbody></table></div></div>' +
-      (f.length > 500 ? '<p style="text-align:center;padding:10px;color:var(--t3);font-size:12px">Mostrando primeros 500 de ' + f.length + '. Filtra más para ver todos.</p>' : '');
+    el.innerHTML = renderGVisAgrupado(f, cy, rep, tipo);
   } else {
     // Si no hay rep, mostrar agrupado por representante
     const porRep = {};
@@ -3697,6 +3653,205 @@ function esc_(s){
   return String(s||'').replace(/[&<>"']/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
+}
+
+// ── Renderiza lista agrupada por médico/farmacia ──
+function renderGVisAgrupado(f, cy, rep, tipoFil){
+  if (!f.length) {
+    return '<div class="empty"><div class="empty-ico">📋</div><p>Sin visitas con los filtros actuales.</p></div>';
+  }
+  // Separar médicos y farmacias
+  var visMed = f.filter(function(v){ return v.tipo_visita !== 'farmacia'; });
+  var visFarm = f.filter(function(v){ return v.tipo_visita === 'farmacia'; });
+
+  var html = '';
+
+  // ── MÉDICOS: historial cruzado de ciclos (ciclo 5+) ──
+  if (tipoFil !== 'farmacia' && visMed.length) {
+    // Agrupar por nombre normalizado
+    var medMap = {};
+    visMed.forEach(function(v){
+      var k = (v.medico||'').toUpperCase().trim();
+      if (!medMap[k]) medMap[k] = { nombre: v.medico, esp: v.especialidad, ciudad: v.ciudad, tipo_panel: v.tipo_panel, rep: v.rep, visitas: [] };
+      medMap[k].visitas.push(v);
+    });
+    // Traer TODAS las visitas del rep (no solo las filtradas por ciclo) para los mismos médicos, para armar el cross-cycle history
+    var repVisitsAll = visits.filter(function(v){ return v.rep === rep && v.tipo_visita !== 'farmacia'; });
+    var byMedAll = {};
+    repVisitsAll.forEach(function(v){
+      var k = (v.medico||'').toUpperCase().trim();
+      if (!byMedAll[k]) byMedAll[k] = [];
+      byMedAll[k].push(v);
+    });
+    // Ciclos histórico visibles: desde ciclo 5 en adelante, hasta 5 máx (del más viejo al más nuevo)
+    var allCyc = (typeof getAllCycles==='function') ? getAllCycles() : [];
+    var histCiclos = allCyc.filter(function(c){ return c.num >= 5; })
+                            .sort(function(a,b){ return a.num - b.num; })
+                            .slice(-5);
+
+    html += '<div style="font-size:12px;color:var(--t2);margin:.4rem 0 .6rem 0;font-weight:600">👨‍⚕️ Médicos — ' + Object.keys(medMap).length + ' únicos con visita en el rango filtrado</div>';
+    html += Object.keys(medMap).sort().map(function(k){
+      var m = medMap[k];
+      var allV = byMedAll[k] || [];
+      // Historial por ciclo
+      var histHtml = histCiclos.map(function(c){
+        var v = allV.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && !x.noEncontro; });
+        var vNoEnc = !v && allV.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && x.noEncontro; });
+        var isCurrent = CYCLE && c.num === CYCLE.num;
+        var bg = isCurrent ? 'background:#FFF9C4;' : '';
+        var content, color;
+        if (v) {
+          content = fmtShort(v.fecha) + ' <span style="color:#1A5C3A">✓</span>';
+          color = '#1A5C3A';
+        } else if (vNoEnc) {
+          content = fmtShort(vNoEnc.fecha) + ' <span style="color:#C0392B">❌</span>';
+          color = '#C0392B';
+        } else {
+          content = '<span style="color:var(--t3)">—</span>';
+          color = 'var(--t3)';
+        }
+        return '<div style="' + bg + 'padding:6px 8px;border:1px solid var(--b);border-radius:6px;min-width:120px;text-align:center">' +
+          '<div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">Ciclo ' + c.num + (isCurrent?' · actual':'') + '</div>' +
+          '<div style="font-size:12px;color:' + color + ';font-weight:600">' + content + '</div>' +
+        '</div>';
+      }).join('');
+      return '<div style="border:1px solid var(--b);border-radius:var(--rad);padding:.85rem 1.1rem;margin-bottom:.6rem;background:var(--s)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:.6rem">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:14px;font-weight:700">👨‍⚕️ ' + esc_(m.nombre || '—') + '</div>' +
+            '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">' + esc_((m.esp||'') + ' · ' + (m.ciudad||'') + (m.tipo_panel?' · '+m.tipo_panel:'')) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">' + histHtml + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ── FARMACIAS: agrupar por cod dentro del ciclo, mostrar todas las fechas ──
+  if (tipoFil !== 'medico' && visFarm.length) {
+    var farmMap = {};
+    visFarm.forEach(function(v){
+      var k = String(v.farmacia_cod || v.farmacia || '');
+      if (!farmMap[k]) farmMap[k] = { cod: v.farmacia_cod, pdv: v.farmacia, cadena: v.cadena, ciudad: v.ciudad, zona: v.zona, rep: v.rep, visitas: [] };
+      farmMap[k].visitas.push(v);
+    });
+    html += '<div style="font-size:12px;color:var(--t2);margin:.9rem 0 .6rem 0;font-weight:600">🏪 Farmacias — ' + Object.keys(farmMap).length + ' únicas con visita en el rango filtrado</div>';
+    html += Object.keys(farmMap).sort(function(a,b){ return (farmMap[a].pdv||'').localeCompare(farmMap[b].pdv||''); }).map(function(k){
+      var g = farmMap[k];
+      // Ordenar visitas por fecha
+      g.visitas.sort(function(a,b){ return a.ts.localeCompare(b.ts); });
+      var fechasHtml = g.visitas.map(function(v){
+        var color = v.noEncontro ? '#C0392B' : '#1A5C3A';
+        var icon = v.noEncontro ? '❌' : '✓';
+        var muestras = (v.muestras||[]).filter(function(m){ return typeof m === 'object'; });
+        var mTxt = muestras.length ? muestras.map(function(m){ return m.producto + ' ×' + (m.cantidad||1); }).join(', ') : '';
+        return '<div style="padding:6px 10px;border-left:3px solid ' + color + ';background:var(--s2);margin-bottom:4px;border-radius:4px">' +
+          '<div style="font-size:12px;font-weight:600">' + fmtShort(v.fecha) + ' <span style="color:' + color + '">' + icon + '</span></div>' +
+          (mTxt ? '<div style="font-size:11px;color:var(--t2);margin-top:2px">💊 ' + esc_(mTxt) + '</div>' : '') +
+          (v.comentario ? '<div style="font-size:11px;color:var(--t2);margin-top:2px">💬 ' + esc_(v.comentario) + '</div>' : '') +
+        '</div>';
+      }).join('');
+      var badge = g.visitas.length > 1 ? '<span style="background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px">' + g.visitas.length + ' visitas</span>' : '';
+      return '<div style="border:1px solid var(--b);border-radius:var(--rad);padding:.85rem 1.1rem;margin-bottom:.6rem;background:var(--s)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:.5rem">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:14px;font-weight:700">🏪 ' + esc_(g.pdv || '—') + (g.cod?' <span style="color:var(--t3);font-weight:400">('+esc_(g.cod)+')</span>':'') + badge + '</div>' +
+            '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">' + esc_((g.cadena||'') + ' · ' + (g.ciudad||'') + (g.zona?' · '+g.zona:'')) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div>' + fechasHtml + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  return html || '<div class="empty"><p>Sin visitas con los filtros actuales.</p></div>';
+}
+
+// ── Renderiza pendientes de visitar (No visitados) ──
+function renderNoVisitados(rep, cy, tipoFil, q, cicloLabel){
+  var summary = document.getElementById('gv-summary');
+  var el = document.getElementById('gvlist');
+
+  if (!cy) {
+    if (summary) summary.innerHTML = '<div class="card" style="padding:.9rem 1.1rem;background:#FEF3C7;border-color:#F59E0B"><div style="font-size:13px;color:#92400E">⚠️ Para ver "No visitados" selecciona un ciclo específico.</div></div>';
+    if (el) el.innerHTML = '';
+    return;
+  }
+  if (!rep) {
+    if (summary) summary.innerHTML = '<div class="card" style="padding:.9rem 1.1rem;background:#FEF3C7;border-color:#F59E0B"><div style="font-size:13px;color:#92400E">⚠️ Para ver "No visitados" selecciona un representante.</div></div>';
+    if (el) el.innerHTML = '';
+    return;
+  }
+
+  // Panel del rep
+  var panMed = (typeof PANEL !== 'undefined' && PANEL[rep]) ? PANEL[rep] : [];
+  var fkey = (typeof farmPanelKey === 'function') ? farmPanelKey(rep) : rep;
+  var panFarm = (typeof FARM_PANEL !== 'undefined' && FARM_PANEL[fkey]) ? FARM_PANEL[fkey] : [];
+
+  // Visitas EFECTIVAS del rep en el ciclo
+  var vc = visits.filter(function(v){ return v.rep === rep && v.fecha >= cy.ini && v.fecha <= cy.fin && !v.noEncontro; });
+  var medVisitedSet = new Set(vc.filter(function(v){ return v.tipo_visita !== 'farmacia'; }).map(function(v){ return (v.medico||'').toUpperCase().trim(); }));
+  // Farmacias visitadas: registrar por cod Y por nombre (fallback si dedup cambió el cod)
+  var farmVisitedByCod = new Set();
+  var farmVisitedByName = new Set();
+  vc.filter(function(v){ return v.tipo_visita === 'farmacia'; }).forEach(function(v){
+    if (v.farmacia_cod) farmVisitedByCod.add(String(v.farmacia_cod));
+    if (v.farmacia) farmVisitedByName.add(String(v.farmacia).toUpperCase().trim());
+  });
+
+  var medPend = panMed.filter(function(d){ return !medVisitedSet.has((d.nombre||'').toUpperCase().trim()); });
+  var farmPend = panFarm.filter(function(f){
+    if (farmVisitedByCod.has(String(f.cod))) return false;
+    if (farmVisitedByName.has(String(f.pdv||'').toUpperCase().trim())) return false;
+    return true;
+  });
+
+  // Aplicar tipo filter y búsqueda
+  if (tipoFil === 'farmacia') medPend = [];
+  if (tipoFil === 'medico') farmPend = [];
+  if (q) {
+    medPend = medPend.filter(function(d){ return (d.nombre||'').toUpperCase().includes(q) || (d.especialidad||'').toUpperCase().includes(q) || (d.ciudad||'').toUpperCase().includes(q); });
+    farmPend = farmPend.filter(function(f){ return (f.pdv||'').toUpperCase().includes(q) || (f.cadena||'').toUpperCase().includes(q) || (f.ciudad||'').toUpperCase().includes(q); });
+  }
+
+  // Summary
+  if (summary) {
+    summary.innerHTML = '<div class="card" style="padding:.9rem 1.1rem;background:#FEF9F0;border-color:#F59E0B">' +
+      '<div style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem">Pendientes por visitar — ' + cicloLabel + ' · ' + rep + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">' +
+        '<div><div style="font-size:22px;font-weight:700;color:#C47A0A">' + medPend.length + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">👨‍⚕️ Médicos sin visitar</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;color:#C47A0A">' + farmPend.length + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">🏪 Farmacias sin visitar</div></div>' +
+      '</div></div>';
+  }
+
+  // Render
+  var html = '';
+  if (medPend.length) {
+    html += '<div style="font-size:13px;color:var(--t);margin:.6rem 0 .5rem 0;font-weight:700">👨‍⚕️ Médicos pendientes (' + medPend.length + ')</div>';
+    html += '<div class="card" style="padding:0;overflow:hidden;margin-bottom:.9rem">';
+    html += medPend.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||''); }).map(function(d){
+      return '<div style="padding:9px 12px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center;gap:12px">' +
+        '<div><div style="font-size:13px;font-weight:600">' + esc_(d.nombre) + '</div>' +
+        '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + esc_((d.especialidad||'') + ' · ' + (d.ciudad||'') + (d.tipo?' · '+d.tipo:'')) + '</div></div>' +
+        '<span style="font-size:10.5px;color:#C47A0A;font-weight:700;background:#FEF3C7;padding:3px 8px;border-radius:5px;white-space:nowrap">SIN VISITAR</span>' +
+      '</div>';
+    }).join('');
+    html += '</div>';
+  }
+  if (farmPend.length) {
+    html += '<div style="font-size:13px;color:var(--t);margin:.6rem 0 .5rem 0;font-weight:700">🏪 Farmacias pendientes (' + farmPend.length + ')</div>';
+    html += '<div class="card" style="padding:0;overflow:hidden">';
+    html += farmPend.sort(function(a,b){ return (a.pdv||'').localeCompare(b.pdv||''); }).map(function(f){
+      return '<div style="padding:9px 12px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center;gap:12px">' +
+        '<div><div style="font-size:13px;font-weight:600">' + esc_(f.pdv) + (f.cod?' <span style="color:var(--t3);font-weight:400">('+esc_(String(f.cod))+')</span>':'') + '</div>' +
+        '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + esc_((f.cadena||'') + ' · ' + (f.ciudad||'') + (f.zona?' · '+f.zona:'')) + '</div></div>' +
+        '<span style="font-size:10.5px;color:#C47A0A;font-weight:700;background:#FEF3C7;padding:3px 8px;border-radius:5px;white-space:nowrap">SIN VISITAR</span>' +
+      '</div>';
+    }).join('');
+    html += '</div>';
+  }
+  if (!html) html = '<div class="empty"><div class="empty-ico">✅</div><p>¡Sin pendientes! Todo el panel ya fue visitado en este ciclo.</p></div>';
+  if (el) el.innerHTML = html;
 }
 
 // ── FILE UPLOAD ──
@@ -5959,7 +6114,6 @@ function reEnviarPedido(id){
 // ─────────────────── GERENCIAL ───────────────────
 function initPedidosGer(){
   loadPedidos(null).then(function(){
-    // poblar selector de reps
     var sel = document.getElementById('gp-f-rep');
     if (sel && sel.options.length<=1){
       var reps = Object.keys(PANEL).sort();
@@ -6020,13 +6174,13 @@ function renderGerPedidos(){
         btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'enviado_distribuidor\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #6A1B9A;background:#F3E5F5;color:#6A1B9A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E4} Marcar como Enviado al distribuidor</button>';
       }
     } else {
-      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'aprobado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F5E9;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">✅ Aprobar</button>';
+      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'aprobado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F5E9;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u2705 Aprobar</button>';
       if (p.distribuidor === 'directo') {
         btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'facturado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #1565C0;background:#E3F0FF;color:#1565C0;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4D1} Facturado</button>';
       } else if (p.distribuidor === 'boticas_unidas' || p.distribuidor === 'difare') {
         btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'enviado_distribuidor\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #6A1B9A;background:#F3E5F5;color:#6A1B9A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E4} Enviado a distribuidor</button>';
       }
-      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'cancelado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#FBE9E7;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">❌ Cancelar</button>';
+      btns += '<button onclick="gerPedEstado(\''+p.id+'\',\'cancelado\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#FBE9E7;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u274C Cancelar</button>';
     }
     return '<div style="padding:10px 11px;border-bottom:1px solid #eef2ef">' +
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start">' +
@@ -6037,7 +6191,7 @@ function renderGerPedidos(){
         '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px">'+estadoLabel(p.estado||'enviado')+'</div>' +
       '</div>' +
       '<div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:5px">' +
-        '<button onclick="gerPedExport(\''+p.id+'\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11.5px;cursor:pointer;font-family:var(--f)">⬇️ Excel</button>' +
+        '<button onclick="gerPedExport(\''+p.id+'\')" type="button" style="padding:5px 9px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u2B07\uFE0F Excel</button>' +
         btns +
       '</div>' +
     '</div>';
@@ -6065,5 +6219,8 @@ async function gerPedEstado(id, estado){
 }
 
 </script>
+</body>
+</html>
+t>
 </body>
 </html>
