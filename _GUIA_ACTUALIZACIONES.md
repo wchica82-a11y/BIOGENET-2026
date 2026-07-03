@@ -172,4 +172,52 @@ Los códigos GPF empiezan con `GPF` (ej. `GPF127`, `GPF72469`).
 
 ---
 
+## 🔄 SINCRONIZAR ASIGNACIONES DE REPS (FARM_PANEL → reportes)
+
+Cuando se actualiza el `FARM_PANEL` en `biogenet_visitas_24.html` (agregar/quitar farmacias, cambiar rep, agregar nuevo rep como Karina Zamora o Maria Pia Ortiz), los reportes de farmacias quedan desactualizados.
+
+### Cuándo hacerlo
+
+- Agregas o quitas farmacias del `FARM_PANEL`
+- Cambias la asignación de una farmacia de un rep a otro
+- Entra un rep nuevo con su panel
+- Sale un rep (dejar de asignarle farmacias)
+
+### Cómo hacerlo (procedimiento)
+
+1. **Extraer** el `FARM_PANEL` actualizado del HTML del visitador
+2. **Construir** dos índices:
+   - `cod_rep`: `{codigo: rep}` - primera ocurrencia gana (aplica dedup)
+   - `name_rep`: `{pdv_normalizado: rep}` - para matching GPF
+3. **Guardar** `outputs/farm_mappings.json` con el nuevo `cod_rep`
+4. **En cada archivo** (`biogenet_farmacias.html` + `biogenet_farmacias_control.html`):
+   - Combinar `DATA_REP` + `DATA_NOREP`, reasignar rep con nuevo mapping, separar según si tiene rep válido
+   - Reasignar rep en `DATA_WEEKLY`
+   - Reasignar rep en cada semana de `WEEKLY_HISTORY[label].data` (solo CONTROL)
+   - Actualizar rep en `GPF_COD_MAP` matching por nombre PDV
+   - Reasignar rep en `GPF_DATA_REP` + `GPF_DATA_NOREP` matching por nombre PDV
+
+### Reglas de matching
+
+| Sistema | Match por | Fuente en FARM_PANEL |
+|---|---|---|
+| DIFARE (DATA_REP, DATA_WEEKLY, WEEKLY_HISTORY) | `cod` exacto | `f.cod` |
+| GPF (GPF_COD_MAP, GPF_DATA_REP) | Nombre PDV normalizado (UPPER + trim) | `f.pdv` |
+
+### Fallback
+
+Si un cod/nombre no matchea con ningún rep en FARM_PANEL:
+- Se marca `rep = 'NO EXISTE'` (para DIFARE)
+- Se marca `rep = ''` (para GPF)
+- La fila se mueve al array NOREP correspondiente
+
+### Verificación post-sincronización
+
+- [ ] Total de reps en DATA_REP incluye a todos los reps activos del FARM_PANEL
+- [ ] Los reps que salieron ya no aparecen en la lista
+- [ ] Los reps que entraron tienen conteos coherentes
+- [ ] No hay reps huérfanos (nombres viejos que ya no existen)
+
+---
+
 Última actualización de esta guía: 2026-06-28
