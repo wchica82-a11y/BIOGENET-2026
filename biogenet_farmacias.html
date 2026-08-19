@@ -391,7 +391,11 @@ tr:hover td{background:var(--blue-light)}
 
   <!-- L3: productos de un PDV -->
   <div id="r-l3" style="display:none">
-    <button class="back-btn" id="r-l3-back" onclick="showLevel('r',2)">← Atrás</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <button class="back-btn" id="r-l3-back" onclick="showLevel('r',2)">← Atrás</button>
+      <button onclick="abrirUbicacion(currentPDV, currentPDVName)" style="padding:8px 14px;background:#1A5C3A;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">📍 Obtener dirección</button>
+      <span id="ubic-status-r" style="font-size:12px;color:#5A6B60"></span>
+    </div>
     <div class="breadcrumb" id="r-bc3"></div>
     <div class="sec-title">Productos en este punto de venta</div>
     <div class="tbl-wrap"><div class="tbl-scroll">
@@ -445,7 +449,11 @@ tr:hover td{background:var(--blue-light)}
     </div></div>
   </div>
   <div id="g-l3" style="display:none">
-    <button class="back-btn" id="g-l3-back" onclick="showLevel('g',2)">← PDV</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <button class="back-btn" id="g-l3-back" onclick="showLevel('g',2)">← PDV</button>
+      <button onclick="abrirUbicacion(currentPDV, currentPDVName)" style="padding:8px 14px;background:#7C3AED;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">📍 Obtener dirección</button>
+      <span id="ubic-status-g" style="font-size:12px;color:#5A6B60"></span>
+    </div>
     <div class="breadcrumb" id="g-bc3"></div>
     <div class="sec-title">Productos en este punto de venta</div>
     <div class="tbl-wrap"><div class="tbl-scroll">
@@ -1019,6 +1027,54 @@ function getAlertPDVs(repName,prodF,met,thr,lastM,hasW){
 // ── BOOT ───────────────────────────────────────────────
 initSelects();
 renderRep();
+
+// ── Obtener ubicación GPS del PDV y abrir en Google Maps ──
+const _UBIC_SUPABASE_URL = 'https://lgefqwfitpgosixmyjab.supabase.co';
+const _UBIC_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxnZWZxd2ZpdHBnb3NpeG15amFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzI2ODQsImV4cCI6MjA5NDQwODY4NH0.3WCJtKl4QCVdKcujEZh4Rgjg1yPxlJPZThskJ6MPu80';
+async function abrirUbicacion(cod, pdvName){
+  var isGpf = document.getElementById('g-l3') && document.getElementById('g-l3').style.display !== 'none';
+  var statusId = isGpf ? 'ubic-status-g' : 'ubic-status-r';
+  var statusEl = document.getElementById(statusId);
+  if (!cod) { if(statusEl) statusEl.textContent = '⚠ Sin código PDV'; return; }
+  if (statusEl) { statusEl.style.color = '#1565C0'; statusEl.textContent = '🔍 Buscando ubicación…'; }
+  try {
+    // Para GPF, quitar el prefijo GPF (los ref_id en ubicaciones no tienen prefijo)
+    var searchCod = String(cod);
+    var codClean = searchCod.startsWith('GPF') ? searchCod.substring(3) : searchCod;
+    // Buscar por ref_id = cod OR ref_id = cod sin prefijo
+    var url = _UBIC_SUPABASE_URL + '/rest/v1/ubicaciones?tipo=eq.farmacia&or=(ref_id.eq.' + encodeURIComponent(searchCod) + ',ref_id.eq.' + encodeURIComponent(codClean) + ')&select=lat,lng,precision_m,fecha,nombre,rep,capturado_por&order=fecha.desc&limit=5';
+    var resp = await fetch(url, { headers: { 'apikey': _UBIC_SUPABASE_KEY, 'Authorization': 'Bearer ' + _UBIC_SUPABASE_KEY }});
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var rows = await resp.json();
+    if (!rows || !rows.length) {
+      // Fallback: buscar por nombre PDV
+      if (pdvName) {
+        var url2 = _UBIC_SUPABASE_URL + '/rest/v1/ubicaciones?tipo=eq.farmacia&nombre=ilike.' + encodeURIComponent('%'+pdvName+'%') + '&select=lat,lng,precision_m,fecha,nombre,rep&order=fecha.desc&limit=5';
+        var resp2 = await fetch(url2, { headers: { 'apikey': _UBIC_SUPABASE_KEY, 'Authorization': 'Bearer ' + _UBIC_SUPABASE_KEY }});
+        if (resp2.ok) rows = await resp2.json();
+      }
+    }
+    if (!rows || !rows.length) {
+      statusEl.style.color = '#C0392B';
+      statusEl.textContent = '❌ Este PDV aún no tiene ubicación GPS capturada';
+      return;
+    }
+    var u = rows[0];
+    var lat = u.lat, lng = u.lng;
+    if (!lat || !lng) { statusEl.textContent = '❌ Coordenadas inválidas'; return; }
+    var gmaps = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
+    statusEl.style.color = '#1A5C3A';
+    var capBy = u.capturado_por || u.rep || '';
+    var precision = u.precision_m ? ' · precisión ±' + Math.round(u.precision_m) + 'm' : '';
+    var fechaCap = u.fecha ? ' · ' + String(u.fecha).slice(0,10) : '';
+    statusEl.innerHTML = '✅ Encontrada' + precision + fechaCap + (capBy ? ' · por ' + capBy : '') + ' · <a href="' + gmaps + '" target="_blank" style="color:#1A5C3A;font-weight:700;text-decoration:underline">Abrir en Google Maps</a>';
+    // Auto-abrir Google Maps en nueva pestaña
+    window.open(gmaps, '_blank');
+  } catch(e) {
+    statusEl.style.color = '#C0392B';
+    statusEl.textContent = '❌ Error: ' + (e.message || e);
+  }
+}
 
 
 // GPF se renderiza cuando el usuario hace clic en la pestaña (switchView)
