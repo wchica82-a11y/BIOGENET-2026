@@ -542,7 +542,7 @@ textarea{resize:none;height:88px;line-height:1.5}
       <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Sync<span id="sync-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#C0392B;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;line-height:18px;border-radius:9px;padding:0 5px;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
     </div>
     <div class="tab" data-tab="g-delauth" onclick="swTab(this,'ger-tabs','s-ger')">
-      <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6v14a2 2 0 002 2h8a2 2 0 002-2V6"/></svg>Eliminar
+      <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6v14a2 2 0 002 2h8a2 2 0 002-2V6"/></svg>Cambios
     </div>
     <div class="tab" data-tab="g-ciclo" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Ciclo
@@ -837,7 +837,7 @@ textarea{resize:none;height:88px;line-height:1.5}
         <!-- AUTORIZACION DE ELIMINACION DE VISITAS -->
     <div id="g-delauth" class="panel">
       <div class="card">
-        <div class="ctitle">🔓 Autorizar eliminación de visitas</div>
+        <div class="ctitle">🔓 Autorizar cambios / eliminación de visitas</div>
         <p style="font-size:12px;color:var(--t3);margin-bottom:.7rem">Busca la visita que el rep necesita eliminar y dale autorización. El permiso dura 24 horas. El rep verá el botón "Eliminar (autorizado)" en su iPad y podrá borrarla. Si no la borra en 24h, el permiso expira y debe pedírtelo de nuevo.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:8px;margin-bottom:.7rem">
           <div class="field" style="margin-bottom:0"><label>Representante</label>
@@ -1050,6 +1050,46 @@ textarea{resize:none;height:88px;line-height:1.5}
 <!-- AUDIT MODAL -->
 <div class="overlay" id="aoverlay" onclick="if(event.target===this)closeModal()">
   <div class="modal"><div class="mhandle"></div><div id="mcontent"></div></div>
+</div>
+
+<!-- MODIFY VISIT MODAL -->
+<div id="modOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;justify-content:center;align-items:flex-start;padding:1rem;overflow-y:auto" onclick="if(event.target===this)closeModifyModal()">
+  <div style="background:#fff;border-radius:12px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:92vh;overflow-y:auto">
+    <div style="padding:1rem 1.2rem;background:linear-gradient(135deg,#1565C0,#1976D2);color:#fff;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.04em">Modificar visita</div>
+        <div id="modTitle" style="font-size:16px;font-weight:700;margin-top:2px"></div>
+      </div>
+      <button onclick="closeModifyModal()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:20px;width:32px;height:32px;border-radius:50%;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:1.1rem 1.2rem" id="modBody">
+      <div id="modInfo" style="font-size:12px;color:#5A6B60;padding:8px 10px;background:#F4F7F5;border-radius:8px;margin-bottom:12px"></div>
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:11px;color:#5A6B60;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Fecha de la visita</label>
+        <input type="date" id="modFecha" style="width:100%;padding:9px 11px;border:1px solid #cbd5d0;border-radius:8px;font-family:var(--f);font-size:14px;margin-top:4px">
+        <div style="font-size:11px;color:#856404;margin-top:4px">💡 Puedes modificar la fecha dentro del ciclo actual</div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:11px;color:#5A6B60;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Muestras entregadas</label>
+        <div id="modMuestras" style="border:1px solid #cbd5d0;border-radius:8px;padding:8px;margin-top:4px;min-height:40px;background:#FAFAFA"></div>
+        <button type="button" onclick="modAddMuestra()" style="margin-top:6px;padding:6px 10px;background:#E8F4EE;color:#1A5C3A;border:1px dashed #1A5C3A;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer">+ Agregar muestra</button>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:11px;color:#5A6B60;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Materiales entregados</label>
+        <div id="modMateriales" style="border:1px solid #cbd5d0;border-radius:8px;padding:8px;margin-top:4px;min-height:40px;background:#FAFAFA"></div>
+        <button type="button" onclick="modAddMaterial()" style="margin-top:6px;padding:6px 10px;background:#E3F0FF;color:#1565C0;border:1px dashed #1565C0;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer">+ Agregar material</button>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:11px;color:#5A6B60;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Comentario</label>
+        <textarea id="modComentario" rows="3" style="width:100%;padding:9px 11px;border:1px solid #cbd5d0;border-radius:8px;font-family:var(--f);font-size:13px;margin-top:4px;resize:vertical"></textarea>
+      </div>
+      <div id="modStatus" style="font-size:12px;margin-bottom:10px;min-height:14px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" onclick="closeModifyModal()" style="padding:10px 16px;border:1px solid #cbd5d0;background:#fff;color:#4B5563;border-radius:8px;font-weight:600;cursor:pointer">Cancelar</button>
+        <button type="button" onclick="saveModifyVisit()" id="modSaveBtn" style="padding:10px 18px;background:#1565C0;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">💾 Guardar cambios</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1401,7 +1441,7 @@ async function renderDelAuth(){
     rows.forEach(function(v){
       var nombre = v.tipo_visita==='farmacia' ? ('🏪 '+(v.farmacia||'')) : ('👨\u200d⚕️ '+(v.medico||''));
       var estado = '<span style="color:#9CA3AF">— sin permiso —</span>';
-      var btn = '<button onclick="grantDelete(\''+v.id+'\')" style="padding:5px 10px;border-radius:6px;border:none;background:#1A5C3A;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer">🔓 Permitir eliminar</button>';
+      var btn = '<button onclick="grantDelete(\''+v.id+'\')" style="padding:5px 10px;border-radius:6px;border:none;background:#1A5C3A;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer">🔓 Permitir cambios</button>';
       if (v.delete_granted_at) {
         var gMs = new Date(v.delete_granted_at).getTime();
         var horasRest = Math.floor((24*60*60*1000 - (nowMs - gMs))/3600000);
@@ -1964,7 +2004,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-08-16-190000';
+const APP_VERSION = '2026-08-27-100000';
 
 async function checkForUpdates() {
   try {
@@ -3229,28 +3269,47 @@ function renderHist(){
   }
 }
 
-function deleteBtnHTML(v){
-  // Solo mostrar para el rep dueño y solo si tipo_visita es medico o farmacia
-  if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
-  var DELETE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
-  var GRANT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 horas
+function _visitPermState(v){
+  var DELETE_WINDOW_MS = 2 * 60 * 60 * 1000;
+  var GRANT_WINDOW_MS = 24 * 60 * 60 * 1000;
   var nowMs = Date.now();
   var tsMs = v.ts ? new Date(v.ts).getTime() : (v.fecha ? new Date(v.fecha).getTime() : nowMs);
   var withinWindow = (nowMs - tsMs) < DELETE_WINDOW_MS;
-  var hasGrant = false;
+  var hasGrant = false, minsLeftWin = 0;
   if (v.delete_granted_at) {
     var grantMs = new Date(v.delete_granted_at).getTime();
     hasGrant = (nowMs - grantMs) < GRANT_WINDOW_MS;
   }
-  if (withinWindow) {
-    var mins = Math.floor((DELETE_WINDOW_MS - (nowMs - tsMs)) / 60000);
-    var lbl = mins >= 60 ? Math.floor(mins/60)+'h '+(mins%60)+'m' : mins+'m';
+  if (withinWindow) minsLeftWin = Math.floor((DELETE_WINDOW_MS - (nowMs - tsMs)) / 60000);
+  return { withinWindow: withinWindow, hasGrant: hasGrant, minsLeftWin: minsLeftWin };
+}
+function deleteBtnHTML(v){
+  if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
+  var s = _visitPermState(v);
+  if (s.withinWindow) {
+    var lbl = s.minsLeftWin >= 60 ? Math.floor(s.minsLeftWin/60)+'h '+(s.minsLeftWin%60)+'m' : s.minsLeftWin+'m';
     return '<button onclick="reqDeleteVisit(\''+v.id+'\')" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">🗑️ Eliminar (queda '+lbl+')</button>';
-  } else if (hasGrant) {
-    return '<button onclick="reqDeleteVisit(\''+v.id+'\')" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F4EE;color:#1A5C3A;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">🗑️ Eliminar (autorizado por gerente)</button>';
-  } else {
-    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Solicitar autorización para eliminar el registro</div>';
+  } else if (s.hasGrant) {
+    return '<button onclick="reqDeleteVisit(\''+v.id+'\')" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F4EE;color:#1A5C3A;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">🗑️ Eliminar (autorizado)</button>';
   }
+  return '';
+}
+function modifyBtnHTML(v){
+  if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
+  var s = _visitPermState(v);
+  if (s.withinWindow || s.hasGrant) {
+    var col = s.withinWindow ? '#1565C0' : '#1A5C3A';
+    var bg = s.withinWindow ? '#fff' : '#E3F0FF';
+    var lbl = s.withinWindow ? 'Modificar' : 'Modificar (autorizado)';
+    return '<button onclick="openModifyVisit(\''+v.id+'\')" style="margin-top:6px;margin-left:6px;padding:6px 10px;border-radius:6px;border:1px solid '+col+';background:'+bg+';color:'+col+';font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">✏️ '+lbl+'</button>';
+  }
+  return '';
+}
+function permBannerHTML(v){
+  if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
+  var s = _visitPermState(v);
+  if (s.withinWindow || s.hasGrant) return '';
+  return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Solicitar autorización al gerente para modificar o eliminar</div>';
 }
 function vcardHTML(v, clickable){
   // Farmacia visit card
@@ -3269,7 +3328,7 @@ function vcardHTML(v, clickable){
         ${v.objetivo?`<span class="tag tg">${v.objetivo}</span>`:''}
       </div>
       ${v.comentario?`<div class="vccmt">💬 ${v.comentario}</div>`:''}
-      ${deleteBtnHTML(v)}
+      ${deleteBtnHTML(v)}${modifyBtnHTML(v)}${permBannerHTML(v)}
     </div>`;
   }
   // Médico visit card
@@ -3282,7 +3341,7 @@ function vcardHTML(v, clickable){
     </div>
     <div class="tags">${tipoTag}<span class="tag tb">${v.resultado||''}</span>${muestras}</div>
     ${v.comentario?`<div class="vccmt">💬 ${v.comentario}</div>`:''}
-    ${deleteBtnHTML(v)}
+    ${deleteBtnHTML(v)}${modifyBtnHTML(v)}${permBannerHTML(v)}
   </div>`;
 }
 
@@ -3339,6 +3398,149 @@ async function reqDeleteVisit(visitId){
     alert('✓ Visita eliminada');
   } catch(e){
     alert('Error: ' + (e.message||e));
+  }
+}
+
+// ══════════════════════════════════════════
+// MODIFICAR VISITA (rep)
+// ══════════════════════════════════════════
+var _modifyingVisit = null;
+var _modMuestrasList = [];
+var _modMaterialesList = [];
+
+function _getRepProdOptions(){
+  var linea = REP_LINEA[CU] || '';
+  var prods = (typeof PROD_LINEA !== 'undefined' && PROD_LINEA[linea]) ? PROD_LINEA[linea] : [];
+  return prods;
+}
+function _getRepMatOptions(){
+  try {
+    var mats = JSON.parse(localStorage.getItem('bg_materiales')||'[]');
+    return Array.isArray(mats) ? mats : [];
+  } catch(e){ return []; }
+}
+function _modRenderMuestras(){
+  var el = document.getElementById('modMuestras');
+  var prods = _getRepProdOptions();
+  var optsHtml = prods.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
+  el.innerHTML = _modMuestrasList.length === 0
+    ? '<div style="color:#9CA3AF;font-size:12px;padding:4px">Sin muestras. Click "+ Agregar muestra" para añadir.</div>'
+    : _modMuestrasList.map(function(m, i){
+        return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">' +
+          '<select onchange="_modUpdateMuestra('+i+',\'producto\',this.value)" style="flex:1;padding:6px 8px;border:1px solid #cbd5d0;border-radius:6px;font-size:12px"><option value="">-- producto --</option>' +
+          prods.map(function(p){ return '<option value="'+p+'"'+(p===m.producto?' selected':'')+'>'+p+'</option>'; }).join('') + '</select>' +
+          '<input type="number" min="0" step="1" value="'+(m.cantidad||1)+'" onchange="_modUpdateMuestra('+i+',\'cantidad\',this.value)" style="width:70px;padding:6px 8px;border:1px solid #cbd5d0;border-radius:6px;font-size:12px">' +
+          '<button type="button" onclick="_modRemoveMuestra('+i+')" style="padding:6px 8px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:6px;cursor:pointer;font-weight:700">✕</button>' +
+        '</div>';
+      }).join('');
+}
+function modAddMuestra(){ _modMuestrasList.push({producto:'', cantidad:1}); _modRenderMuestras(); }
+function _modUpdateMuestra(i, field, val){ if (_modMuestrasList[i]) _modMuestrasList[i][field] = field==='cantidad'?(parseInt(val)||0):val; }
+function _modRemoveMuestra(i){ _modMuestrasList.splice(i,1); _modRenderMuestras(); }
+
+function _modRenderMateriales(){
+  var el = document.getElementById('modMateriales');
+  var mats = _getRepMatOptions();
+  el.innerHTML = _modMaterialesList.length === 0
+    ? '<div style="color:#9CA3AF;font-size:12px;padding:4px">Sin materiales. Click "+ Agregar material" para añadir.</div>'
+    : _modMaterialesList.map(function(m, i){
+        return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">' +
+          '<select onchange="_modUpdateMaterial('+i+',\'material\',this.value)" style="flex:1;padding:6px 8px;border:1px solid #cbd5d0;border-radius:6px;font-size:12px"><option value="">-- material --</option>' +
+          mats.map(function(x){ return '<option value="'+x+'"'+(x===m.material?' selected':'')+'>'+x+'</option>'; }).join('') + '</select>' +
+          '<input type="number" min="0" step="1" value="'+(m.cantidad||1)+'" onchange="_modUpdateMaterial('+i+',\'cantidad\',this.value)" style="width:70px;padding:6px 8px;border:1px solid #cbd5d0;border-radius:6px;font-size:12px">' +
+          '<button type="button" onclick="_modRemoveMaterial('+i+')" style="padding:6px 8px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:6px;cursor:pointer;font-weight:700">✕</button>' +
+        '</div>';
+      }).join('');
+}
+function modAddMaterial(){ _modMaterialesList.push({material:'', cantidad:1}); _modRenderMateriales(); }
+function _modUpdateMaterial(i, field, val){ if (_modMaterialesList[i]) _modMaterialesList[i][field] = field==='cantidad'?(parseInt(val)||0):val; }
+function _modRemoveMaterial(i){ _modMaterialesList.splice(i,1); _modRenderMateriales(); }
+
+function openModifyVisit(visitId){
+  var v = visits.find(function(x){ return String(x.id) === String(visitId); });
+  if (!v) { alert('Visita no encontrada localmente'); return; }
+  var s = _visitPermState(v);
+  if (!s.withinWindow && !s.hasGrant) {
+    alert('Esta visita ya no se puede modificar. Pide autorización al gerente.');
+    return;
+  }
+  _modifyingVisit = v;
+  var isFarm = v.tipo_visita === 'farmacia';
+  var nombre = isFarm ? (v.farmacia||'') : (v.medico||'');
+  var meta = isFarm ? (v.cadena||'')+' · '+(v.ciudad||'') : (v.especialidad||'')+' · '+(v.ciudad||'');
+  document.getElementById('modTitle').textContent = (isFarm?'🏪 ':'👨‍⚕️ ') + nombre;
+  document.getElementById('modInfo').innerHTML =
+    '<b>' + nombre + '</b><br>' + meta +
+    '<br><span style="color:#856404">Fecha original: ' + (v.fecha||'—') + '</span>';
+  document.getElementById('modFecha').value = v.fecha || '';
+  document.getElementById('modComentario').value = v.comentario || '';
+  document.getElementById('modStatus').innerHTML = '';
+  // Cargar muestras
+  _modMuestrasList = (Array.isArray(v.muestras) ? v.muestras : []).filter(function(m){ return typeof m === 'object' && m.producto; }).map(function(m){ return {producto:m.producto, cantidad:m.cantidad||1}; });
+  _modMaterialesList = (Array.isArray(v.materiales) ? v.materiales : []).filter(function(m){ return typeof m === 'object' && m.material; }).map(function(m){ return {material:m.material, cantidad:m.cantidad||1}; });
+  _modRenderMuestras();
+  _modRenderMateriales();
+  document.getElementById('modOverlay').style.display = 'flex';
+}
+function closeModifyModal(){ document.getElementById('modOverlay').style.display = 'none'; _modifyingVisit = null; }
+
+async function saveModifyVisit(){
+  var v = _modifyingVisit;
+  if (!v) return;
+  var statusEl = document.getElementById('modStatus');
+  var saveBtn = document.getElementById('modSaveBtn');
+  var newFecha = document.getElementById('modFecha').value;
+  var newCmt = document.getElementById('modComentario').value.trim();
+  if (!newFecha) { statusEl.style.color='#C0392B'; statusEl.textContent='⚠ Debes indicar una fecha.'; return; }
+  // Filtrar muestras/materiales válidos
+  var newMuestras = _modMuestrasList.filter(function(m){ return m.producto && m.cantidad > 0; });
+  var newMateriales = _modMaterialesList.filter(function(m){ return m.material && m.cantidad > 0; });
+  saveBtn.disabled = true;
+  statusEl.style.color = '#1565C0';
+  statusEl.textContent = '💾 Guardando...';
+  try {
+    // PATCH a Supabase por client_id
+    var url = SUPABASE_URL + '/rest/v1/visits?client_id=eq.' + encodeURIComponent(v.id);
+    var body = {
+      fecha: newFecha,
+      muestras: newMuestras,
+      materiales: newMateriales,
+      comentario: newCmt || null
+    };
+    var resp = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var updated = await resp.json();
+    if (!Array.isArray(updated) || updated.length === 0) {
+      statusEl.style.color = '#C0392B';
+      statusEl.textContent = '❌ No se pudo actualizar. Verifica permisos con el gerente.';
+      saveBtn.disabled = false;
+      return;
+    }
+    // Actualizar cache local
+    v.fecha = newFecha;
+    v.muestras = newMuestras;
+    v.materiales = newMateriales;
+    v.comentario = newCmt;
+    var idx = visits.findIndex(function(x){ return String(x.id) === String(v.id); });
+    if (idx >= 0) visits[idx] = v;
+    try { localStorage.setItem('bg_v2', JSON.stringify(visits)); } catch(e){}
+    statusEl.style.color = '#1A5C3A';
+    statusEl.textContent = '✅ Cambios guardados correctamente.';
+    if (typeof renderHist === 'function') renderHist();
+    setTimeout(closeModifyModal, 900);
+  } catch(e){
+    statusEl.style.color = '#C0392B';
+    statusEl.textContent = '❌ Error: ' + (e.message || e);
+    saveBtn.disabled = false;
   }
 }
 
