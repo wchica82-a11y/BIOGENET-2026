@@ -2004,7 +2004,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-08-27-100000';
+const APP_VERSION = '2026-08-27-113000';
 
 async function checkForUpdates() {
   try {
@@ -3297,18 +3297,21 @@ function deleteBtnHTML(v){
 function modifyBtnHTML(v){
   if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
   var s = _visitPermState(v);
-  if (s.withinWindow || s.hasGrant) {
-    var col = s.withinWindow ? '#1565C0' : '#1A5C3A';
-    var bg = s.withinWindow ? '#fff' : '#E3F0FF';
-    var lbl = s.withinWindow ? 'Modificar' : 'Modificar (autorizado)';
-    return '<button onclick="openModifyVisit(\''+v.id+'\')" style="margin-top:6px;margin-left:6px;padding:6px 10px;border-radius:6px;border:1px solid '+col+';background:'+bg+';color:'+col+';font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">✏️ '+lbl+'</button>';
+  // Modificar SIEMPRE requiere autorización del gerente (no hay ventana libre)
+  if (s.hasGrant) {
+    return '<button onclick="openModifyVisit(\''+v.id+'\')" style="margin-top:6px;margin-left:6px;padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#E8F4EE;color:#1A5C3A;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--f)">✏️ Modificar (autorizado)</button>';
   }
   return '';
 }
 function permBannerHTML(v){
   if (!v || !v.id || CU === 'GERENTE' || v.rep !== CU) return '';
   var s = _visitPermState(v);
-  if (s.withinWindow || s.hasGrant) return '';
+  if (s.hasGrant) return ''; // ya tiene autorización, no muestra banner
+  // Sin autorización:
+  if (s.withinWindow) {
+    // Puede eliminar (ventana 2h) pero para modificar necesita autorización
+    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Para modificar solicitar autorización al gerente</div>';
+  }
   return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Solicitar autorización al gerente para modificar o eliminar</div>';
 }
 function vcardHTML(v, clickable){
