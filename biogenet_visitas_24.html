@@ -245,6 +245,9 @@ textarea{resize:none;height:88px;line-height:1.5}
     <div class="tab" data-tab="t-ped" onclick="swTab(this,'app-tabs','s-app')">
       <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg>Pedidos
     </div>
+    <div class="tab" data-tab="t-pnl" onclick="swTab(this,'app-tabs','s-app')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>Paneles
+    </div>
     <div class="tab" onclick="abrirAuditoria()">
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Auditoría
     </div>
@@ -496,6 +499,21 @@ textarea{resize:none;height:88px;line-height:1.5}
         <div class="ctitle">Mis pedidos recientes</div>
         <div id="ped-mis-list" style="margin-top:6px"></div>
       </div>
+    </div>
+
+    <!-- PANELES (rep): médicos + farmacias con GPS -->
+    <div id="t-pnl" class="panel">
+      <div class="card">
+        <div class="ctitle">📋 Mis paneles</div>
+        <p style="font-size:12px;color:var(--t3);margin-bottom:.7rem">Listado de tus médicos y farmacias. Toca el botón 📍 al lado de cada uno para abrir su ubicación en Google Maps.</p>
+        <div style="display:flex;gap:8px;margin-bottom:.7rem">
+          <button id="pnl-btn-med" onclick="pnlSwitch('medicos')" style="flex:1;padding:11px;border-radius:9px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;font-family:var(--f)">👨‍⚕️ Médicos</button>
+          <button id="pnl-btn-farm" onclick="pnlSwitch('farmacias')" style="flex:1;padding:11px;border-radius:9px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:700;font-size:13.5px;cursor:pointer;font-family:var(--f)">🏪 Farmacias</button>
+        </div>
+        <input type="text" id="pnl-search" placeholder="Buscar por nombre, ciudad o especialidad..." oninput="renderPanelList()" style="width:100%;padding:9px 11px;border:1px solid #cbd5d0;border-radius:8px;font-family:var(--f);font-size:13px;margin-bottom:.5rem">
+        <div id="pnl-info" style="font-size:11.5px;color:var(--t3);margin-bottom:.5rem"></div>
+      </div>
+      <div id="pnl-list"></div>
     </div>
 
   </div>
@@ -2004,7 +2022,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-08-27-113000';
+const APP_VERSION = '2026-08-27-120000';
 
 async function checkForUpdates() {
   try {
@@ -2759,6 +2777,121 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-gps'){ try{ renderGpsPanel(); }catch(e){ console.warn('GPS panel error:', e); } }
   if(el.dataset.tab==='t-ped'){ try{ initPedidosRep(); }catch(e){ console.warn('Pedidos rep error:', e); } }
   if(el.dataset.tab==='g-ped'){ try{ initPedidosGer(); }catch(e){ console.warn('Pedidos ger error:', e); } }
+  if(el.dataset.tab==='t-pnl'){ try{ initMisPaneles(); }catch(e){ console.warn('Paneles error:', e); } }
+}
+
+// ── PANELES (Mis médicos / Mis farmacias con GPS) ──
+var PNL_MODE = 'medicos';
+function pnlSwitch(mode){
+  PNL_MODE = mode;
+  var bMed = document.getElementById('pnl-btn-med');
+  var bFarm = document.getElementById('pnl-btn-farm');
+  if (bMed && bFarm){
+    var on  = 'flex:1;padding:11px;border-radius:9px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;font-family:var(--f)';
+    var off = 'flex:1;padding:11px;border-radius:9px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:700;font-size:13.5px;cursor:pointer;font-family:var(--f)';
+    bMed.style.cssText  = (mode==='medicos')  ? on : off;
+    bFarm.style.cssText = (mode==='farmacias') ? on : off;
+  }
+  var s = document.getElementById('pnl-search');
+  if (s) s.value = '';
+  renderPanelList();
+}
+async function initMisPaneles(){
+  // asegura ubicaciones al día
+  try { if (typeof loadUbicaciones === 'function') await loadUbicaciones(CU); } catch(e){}
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  pnlSwitch(PNL_MODE || 'medicos');
+}
+function _pnlHasGpsMed(rep, nombre){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  return UBIC_NORM_IDX['medico:' + (rep||'') + '||' + normGpsName(nombre||'')] || null;
+}
+function _pnlHasGpsFarm(cod){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  return UBIC_NORM_IDX['farmacia:' + String(cod||'')] || null;
+}
+function _pnlGpsBtn(u, nombre){
+  if (u && u.lat && u.lng){
+    var url = 'https://www.google.com/maps/search/?api=1&query=' + u.lat + ',' + u.lng;
+    return '<a href="'+url+'" target="_blank" rel="noopener" style="display:inline-block;padding:7px 10px;border-radius:7px;background:#1A5C3A;color:#fff;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;font-family:var(--f)">📍 Google Maps</a>';
+  }
+  return '<span style="display:inline-block;padding:7px 10px;border-radius:7px;background:#f2f2f2;color:#999;font-size:11.5px;font-weight:600;white-space:nowrap;font-family:var(--f)" title="Aún no se ha capturado la ubicación GPS de este punto">Sin GPS</span>';
+}
+function renderPanelList(){
+  var cont = document.getElementById('pnl-list');
+  var info = document.getElementById('pnl-info');
+  if (!cont) return;
+  var q = (document.getElementById('pnl-search')||{}).value || '';
+  var qn = normGpsName(q);
+  if (PNL_MODE === 'medicos'){
+    var list = (PANEL[CU] || []).slice();
+    if (qn) list = list.filter(function(m){
+      return normGpsName(m.nombre||'').indexOf(qn)>=0
+          || normGpsName(m.ciudad||'').indexOf(qn)>=0
+          || normGpsName(m.especialidad||'').indexOf(qn)>=0;
+    });
+    list.sort(function(a,b){
+      return (a.ciudad||'').localeCompare(b.ciudad||'') || (a.especialidad||'').localeCompare(b.especialidad||'') || (a.nombre||'').localeCompare(b.nombre||'');
+    });
+    var conGps = list.filter(function(m){ return !!_pnlHasGpsMed(CU, m.nombre); }).length;
+    if (info) info.innerHTML = '<b>'+list.length+'</b> médicos'+(qn?' (filtrados)':'')+' · <span style="color:#1A5C3A">'+conGps+'</span> con GPS';
+    if (!list.length){ cont.innerHTML = '<div class="card"><p style="font-size:12.5px;color:var(--t3);text-align:center;padding:1rem">No hay médicos que coincidan.</p></div>'; return; }
+    var html = '<div class="card" style="padding:0;overflow:hidden">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<thead><tr style="background:#F1F6F3">'
+         + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Ciudad</th>'
+         + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Esp.</th>'
+         + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Nombre / Dirección</th>'
+         + '<th style="text-align:right;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">GPS</th>'
+         + '</tr></thead><tbody>';
+    list.forEach(function(m, i){
+      var u = _pnlHasGpsMed(CU, m.nombre);
+      var bg = i%2 ? '#FBFDFC' : '#fff';
+      html += '<tr style="background:'+bg+'">'
+           +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(m.ciudad||'-')+'</td>'
+           +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(m.especialidad||'-')+'</td>'
+           +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top"><div style="font-weight:700;color:var(--t1)">'+(m.nombre||'')+'</div><div style="color:var(--t3);font-size:11.5px;margin-top:2px">'+(m.direccion||'<i>Sin dirección</i>')+'</div></td>'
+           +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;text-align:right">'+_pnlGpsBtn(u, m.nombre)+'</td>'
+           +  '</tr>';
+    });
+    html += '</tbody></table></div>';
+    cont.innerHTML = html;
+  } else {
+    var fkey = (typeof farmPanelKey==='function') ? farmPanelKey(CU) : CU;
+    var flist = (FARM_PANEL[fkey] || []).slice();
+    if (qn) flist = flist.filter(function(f){
+      return normGpsName(f.pdv||'').indexOf(qn)>=0
+          || normGpsName(f.ciudad||'').indexOf(qn)>=0
+          || normGpsName(f.cadena||'').indexOf(qn)>=0
+          || normGpsName(f.cod||'').indexOf(qn)>=0;
+    });
+    flist.sort(function(a,b){
+      return (a.ciudad||'').localeCompare(b.ciudad||'') || (a.cadena||'').localeCompare(b.cadena||'') || (a.pdv||'').localeCompare(b.pdv||'');
+    });
+    var conGpsF = flist.filter(function(f){ return !!_pnlHasGpsFarm(f.cod); }).length;
+    if (info) info.innerHTML = '<b>'+flist.length+'</b> farmacias'+(qn?' (filtradas)':'')+' · <span style="color:#1A5C3A">'+conGpsF+'</span> con GPS';
+    if (!flist.length){ cont.innerHTML = '<div class="card"><p style="font-size:12.5px;color:var(--t3);text-align:center;padding:1rem">No hay farmacias que coincidan.</p></div>'; return; }
+    var html2 = '<div class="card" style="padding:0;overflow:hidden">';
+    html2 += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html2 += '<thead><tr style="background:#F1F6F3">'
+          + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Ciudad</th>'
+          + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Cadena</th>'
+          + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">PDV / Dirección</th>'
+          + '<th style="text-align:right;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">GPS</th>'
+          + '</tr></thead><tbody>';
+    flist.forEach(function(f, i){
+      var u = _pnlHasGpsFarm(f.cod);
+      var bg = i%2 ? '#FBFDFC' : '#fff';
+      html2 += '<tr style="background:'+bg+'">'
+            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(f.ciudad||'-')+'</td>'
+            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(f.cadena||'-')+'</td>'
+            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top"><div style="font-weight:700;color:var(--t1)">'+(f.pdv||'')+'</div><div style="color:var(--t3);font-size:11.5px;margin-top:2px">'+(f.dir||'<i>Sin dirección</i>')+' · <span style="color:#999">'+(f.cod||'')+'</span></div></td>'
+            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;text-align:right">'+_pnlGpsBtn(u, f.pdv)+'</td>'
+            +  '</tr>';
+    });
+    html2 += '</tbody></table></div>';
+    cont.innerHTML = html2;
+  }
 }
 
 // ── PRODUCT CHIPS ──
