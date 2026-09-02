@@ -2029,7 +2029,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-09-02-101000';
+const APP_VERSION = '2026-09-02-103000';
 
 async function checkForUpdates() {
   try {
@@ -3132,18 +3132,33 @@ function applyMercaderistaView(isMerc){
   var btnMed = document.getElementById('btn-mode-med');
   var tabMues = document.getElementById('tab-mues');
   var tabAud  = document.getElementById('tab-aud');
+  var hbtnMed = document.getElementById('hbtn-med');
+  var hbtnFarm = document.getElementById('hbtn-farm');
+  var pnlBtnMed = document.getElementById('pnl-btn-med');
+  var pnlBtnFarm = document.getElementById('pnl-btn-farm');
   if (isMerc){
     // Ocultar botón "Médico" del selector — solo puede registrar farmacias
     if (btnMed) btnMed.style.display = 'none';
     // Ocultar pestañas que no aplican a mercaderista
     if (tabMues) tabMues.style.display = 'none';
     if (tabAud)  tabAud.style.display  = 'none';
-    // Forzar modo farmacia
+    // En Mis visitas: ocultar toggle Médicos, forzar Farmacias
+    if (hbtnMed) hbtnMed.style.display = 'none';
+    if (hbtnFarm) hbtnFarm.style.flex = '1';
+    if (typeof setHistTipo === 'function') setHistTipo('farmacias');
+    // En Paneles: ocultar botón Médicos, forzar Farmacias
+    if (pnlBtnMed) pnlBtnMed.style.display = 'none';
+    if (pnlBtnFarm) pnlBtnFarm.style.flex = '1';
+    PNL_MODE = 'farmacias';
+    if (typeof pnlSwitch === 'function') pnlSwitch('farmacias');
+    // Forzar modo farmacia en Registro
     if (typeof setVisitMode === 'function') setVisitMode('farm');
   } else {
     if (btnMed) btnMed.style.display = '';
     if (tabMues) tabMues.style.display = '';
     if (tabAud)  tabAud.style.display  = '';
+    if (hbtnMed) hbtnMed.style.display = '';
+    if (pnlBtnMed) pnlBtnMed.style.display = '';
   }
 }
 
