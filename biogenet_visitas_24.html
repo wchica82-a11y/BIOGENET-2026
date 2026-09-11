@@ -2215,7 +2215,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-09-10-120000';
+const APP_VERSION = '2026-09-11-110000';
 
 async function checkForUpdates() {
   try {
@@ -7640,20 +7640,20 @@ function renderPedProductos(){
     // Delta especial: cuánto se ofrece sobre el descuento estándar
     var stdD = getStdDesc(p, dist);
     var delta = d - stdD;
-    var deltaBadge = '', inputBorder = '#cbd5d0', inputBg = '#fff';
+    var deltaBadgeBelow = '', inputBorder = '#cbd5d0', inputBg = '#fff';
     if (delta > 0.0001){
       var pts = (delta*100);
-      deltaBadge = '<span id="pp-delta-'+p.id+'" style="font-size:11px;font-weight:700;color:#fff;background:#F59E0B;padding:3px 8px;border-radius:5px;margin-left:4px;white-space:nowrap">+'+(pts.toFixed(2).replace(/\.?0+$/,''))+' pts extra vs std '+fmtPct(stdD)+'</span>';
+      deltaBadgeBelow = '<div id="pp-delta-'+p.id+'" style="margin-top:6px;font-size:11px;font-weight:700;color:#fff;background:#F59E0B;padding:4px 9px;border-radius:5px;display:inline-block;white-space:nowrap">🔔 +'+(pts.toFixed(2).replace(/\.?0+$/,''))+' pts extra vs std '+fmtPct(stdD)+'</div>';
       inputBorder = '#F59E0B'; inputBg = '#FEF3C7';
     } else {
-      deltaBadge = '<span id="pp-delta-'+p.id+'" style="display:none"></span>';
+      deltaBadgeBelow = '<div id="pp-delta-'+p.id+'" style="display:none"></div>';
     }
     return '<div style="padding:10px 11px;border-bottom:1px solid #eef2ef">' +
       '<div style="font-weight:600;font-size:12.5px;line-height:1.3;margin-bottom:6px">'+nombre+aporteHint+'</div>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px">' +
         '<div style="min-width:88px"><span style="color:var(--t3)">P.V.F.</span> <b>'+fmtMoney(p.pvf)+'</b></div>' +
         '<div style="display:flex;align-items:center;gap:3px"><span style="color:var(--t3)">Desc.</span>' +
-          '<input id="pp-dsc-'+p.id+'" type="number" min="0" max="100" step="0.1" value="'+(d*100).toFixed(2).replace(/\.?0+$/,'')+'" oninput="setDescPct('+p.id+',this.value)" style="width:60px;padding:4px 5px;border-radius:5px;border:1px solid '+inputBorder+';background:'+inputBg+';text-align:right;font-family:var(--f);font-size:12px;font-weight:'+(delta>0.0001?'700':'400')+'"><span>%</span>'+deltaBadge+'</div>' +
+          '<input id="pp-dsc-'+p.id+'" type="number" min="0" max="100" step="0.1" value="'+(d*100).toFixed(2).replace(/\.?0+$/,'')+'" oninput="setDescPct('+p.id+',this.value)" style="width:60px;padding:4px 5px;border-radius:5px;border:1px solid '+inputBorder+';background:'+inputBg+';text-align:right;font-family:var(--f);font-size:12px;font-weight:'+(delta>0.0001?'700':'400')+'"><span>%</span></div>' +
         '<div><span style="color:var(--t3)">Precio unit.</span> <b id="pp-unit-'+p.id+'">'+fmtMoney(pu)+'</b></div>' +
         '<div style="margin-left:auto;display:flex;align-items:center;gap:3px">' +
           '<button onclick="cambiarCant('+p.id+',-1)" type="button" style="width:28px;height:28px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--g);font-weight:700;cursor:pointer;font-size:15px;font-family:var(--f)">-</button>' +
@@ -7662,6 +7662,7 @@ function renderPedProductos(){
         '</div>' +
         '<div style="min-width:80px;text-align:right;font-weight:700;font-size:13px;color:'+color+'" id="pp-total-'+p.id+'">'+fmtMoney(subt)+'</div>' +
       '</div>' +
+      deltaBadgeBelow +
     '</div>';
   }).join('');
   updatePedTotales();
@@ -7687,8 +7688,8 @@ function refreshRowVisual(id){
   if (elDelta){
     if (delta > 0.0001){
       var pts = (delta*100);
-      elDelta.textContent = '+'+(pts.toFixed(2).replace(/\.?0+$/,''))+' pts extra vs std '+fmtPct(stdD);
-      elDelta.style.cssText = 'font-size:11px;font-weight:700;color:#fff;background:#F59E0B;padding:3px 8px;border-radius:5px;margin-left:4px;white-space:nowrap';
+      elDelta.textContent = '🔔 +'+(pts.toFixed(2).replace(/\.?0+$/,''))+' pts extra vs std '+fmtPct(stdD);
+      elDelta.style.cssText = 'margin-top:6px;font-size:11px;font-weight:700;color:#fff;background:#F59E0B;padding:4px 9px;border-radius:5px;display:inline-block;white-space:nowrap';
     } else {
       elDelta.style.display = 'none';
       elDelta.textContent = '';
@@ -8070,15 +8071,28 @@ function wsDifare(ped){
 }
 
 // ─────────────────── MIS PEDIDOS ───────────────────
+var MIS_PED_LIMIT = 15;
+var MIS_PED_SEARCH = '';
 function renderMisPedidos(){
   var el = document.getElementById('ped-mis-list');
   if (!el) return;
-  var mis = PEDIDOS_CACHE.filter(function(p){ return p.rep === CU; }).slice(0, 15);
+  var todos = PEDIDOS_CACHE.filter(function(p){ return p.rep === CU; });
+  var q = (MIS_PED_SEARCH||'').toUpperCase().trim();
+  if (q) todos = todos.filter(function(p){
+    return ((p.razon_social||'').toUpperCase().indexOf(q)>=0)
+        || ((p.ruc||'').toUpperCase().indexOf(q)>=0)
+        || ((p.fecha||'').indexOf(q)>=0);
+  });
+  var mis = todos.slice(0, MIS_PED_LIMIT);
+  var head = '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">'
+    + '<input type="text" placeholder="Buscar cliente, RUC o fecha (YYYY-MM-DD)…" value="'+esc_(MIS_PED_SEARCH||'')+'" oninput="MIS_PED_SEARCH=this.value;renderMisPedidos()" style="flex:1;padding:7px 10px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:12px">'
+    + '<span style="font-size:11px;color:var(--t3);white-space:nowrap">'+mis.length+' de '+todos.length+'</span>'
+    + '</div>';
   if (!mis.length){
-    el.innerHTML = '<p style="font-size:12.5px;color:var(--t3);padding:8px 0">Aun no tienes pedidos registrados.</p>';
+    el.innerHTML = head + '<p style="font-size:12.5px;color:var(--t3);padding:8px 0">'+(q?'Sin coincidencias.':'Aún no tienes pedidos registrados.')+'</p>';
     return;
   }
-  el.innerHTML = mis.map(function(p){
+  el.innerHTML = head + mis.map(function(p){
     var estCol = (typeof estadoColor==='function') ? estadoColor(p.estado)
       : (p.estado==='aprobado'?'#1A5C3A':(p.estado==='facturado'?'#1565C0':(p.estado==='enviado_distribuidor'?'#6A1B9A':(p.estado==='cancelado'?'#C0392B':'#C47A0A'))));
     var estTxt = (typeof estadoLabel==='function') ? estadoLabel(p.estado||'enviado') : (p.estado||'enviado').toUpperCase();
@@ -8091,11 +8105,88 @@ function renderMisPedidos(){
         '<div style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:'+estCol+';text-transform:uppercase;padding:3px 7px;background:rgba(0,0,0,.05);border-radius:5px;white-space:nowrap">'+estTxt+'</div>' +
       '</div>' +
       '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
+        '<button onclick="verDetallePedido(\''+p.id+'\')" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#F0F7F2;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F441}️ Ver detalle</button>' +
         '<button onclick="reEnviarPedido(\''+p.id+'\')" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F4E7} Re-enviar correo</button>' +
         ((p.estado==='enviado' || p.estado==='borrador') ? '<button onclick="eliminarMiPedido(\''+p.id+'\')" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">\u{1F5D1} Eliminar</button>' : '') +
       '</div>' +
     '</div>';
   }).join('');
+  // Botón "Ver más antiguos"
+  if (todos.length > MIS_PED_LIMIT){
+    el.innerHTML += '<div style="text-align:center;padding:10px"><button onclick="MIS_PED_LIMIT+=15;renderMisPedidos()" style="padding:8px 16px;border-radius:7px;border:1px solid #1A5C3A;background:#fff;color:#1A5C3A;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">📜 Ver más antiguos ('+(todos.length-MIS_PED_LIMIT)+')</button></div>';
+  }
+}
+
+// Modal detalle de pedido — muestra todos los productos, cantidades, descuentos, resaltando los que estuvieron sobre estándar
+function verDetallePedido(id){
+  var p = PEDIDOS_CACHE.find(function(x){ return String(x.id)===String(id); });
+  if (!p){ alert('Pedido no encontrado'); return; }
+  var dist = p.distribuidor;
+  var items = p.items || [];
+  var especialesCount = 0;
+  var rowsHtml = items.map(function(it, i){
+    var prod = PRODUCTOS_CAT.find(function(x){ return x.id == it.producto_id; });
+    var stdD = prod ? getStdDesc(prod, dist) : 0;
+    var itemD = Number(it.desc || 0);
+    var delta = itemD - stdD;
+    var bg = i%2 ? '#FBFDFC' : '#fff';
+    var deltaCell = '';
+    if (delta > 0.0001){
+      especialesCount++;
+      bg = '#FEF3C7';
+      deltaCell = '<span style="color:#B45309;font-weight:700;font-size:11px">+'+((delta*100).toFixed(2).replace(/\.?0+$/,''))+' pts vs std '+fmtPct(stdD)+'</span>';
+    }
+    var nom = dist==='difare' ? ((it.cod_difare||'')+' — '+(it.desc_difare||it.nombre||'')) : (it.nombre||'');
+    return '<tr style="background:'+bg+'">'
+      + '<td style="padding:7px 8px;border-bottom:1px solid #EEF3F0;font-size:11.5px">'+esc_(nom)+'</td>'
+      + '<td style="padding:7px 8px;border-bottom:1px solid #EEF3F0;font-size:11.5px;text-align:right;white-space:nowrap">'+it.cantidad+'</td>'
+      + '<td style="padding:7px 8px;border-bottom:1px solid #EEF3F0;font-size:11.5px;text-align:right;white-space:nowrap">'+fmtPct(itemD)+(deltaCell?' <br>'+deltaCell:'')+'</td>'
+      + '<td style="padding:7px 8px;border-bottom:1px solid #EEF3F0;font-size:11.5px;text-align:right;white-space:nowrap">'+fmtMoney(it.precio_unit||0)+'</td>'
+      + '<td style="padding:7px 8px;border-bottom:1px solid #EEF3F0;font-size:11.5px;text-align:right;white-space:nowrap;font-weight:700">'+fmtMoney(it.valor_total||0)+'</td>'
+      + '</tr>';
+  }).join('');
+  var estCol = estadoColor(p.estado||'enviado');
+  var estLbl = estadoLabel(p.estado||'enviado');
+  var html = '<div id="modal-detalle-ped" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)cerrarDetallePedido()">'
+    + '<div style="background:#fff;border-radius:12px;padding:1.1rem;max-width:720px;width:100%;max-height:90vh;overflow:auto">'
+    +   '<div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:.7rem">'
+    +     '<div><h3 style="font-size:16px;font-weight:700;color:#1A5C3A;margin:0">🧾 Detalle del pedido</h3>'
+    +       '<div style="font-size:12px;color:var(--t2);margin-top:3px">'+esc_(p.razon_social||'sin cliente')+(p.ruc?' · RUC '+esc_(p.ruc):'')+'</div>'
+    +       '<div style="font-size:11.5px;color:var(--t3);margin-top:2px">'+distLabel(p.distribuidor)+' · '+esc_(p.fecha||'')+(p.ciclo_num?' · Ciclo '+p.ciclo_num:'')+'</div>'
+    +     '</div>'
+    +     '<div style="display:flex;flex-direction:column;align-items:end;gap:5px">'
+    +       '<span style="font-size:10.5px;color:#fff;background:'+estCol+';padding:3px 8px;border-radius:5px;font-weight:700">'+estLbl+'</span>'
+    +       '<button onclick="cerrarDetallePedido()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#666;padding:0">&times;</button>'
+    +     '</div>'
+    +   '</div>'
+    +   (especialesCount > 0 ? '<div style="padding:8px 11px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:7px;font-size:12px;color:#92400E;margin-bottom:.7rem"><b>🔔 '+especialesCount+' producto(s) con condición especial</b> — descuento superior al estándar (resaltados en amarillo).</div>' : '')
+    +   '<div style="border:1px solid #E1EAE4;border-radius:8px;overflow:hidden">'
+    +     '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    +     '<thead><tr style="background:#F1F6F3">'
+    +       '<th style="text-align:left;padding:9px 8px;font-weight:700;color:var(--t2);font-size:11px">Producto</th>'
+    +       '<th style="text-align:right;padding:9px 8px;font-weight:700;color:var(--t2);font-size:11px">Cant.</th>'
+    +       '<th style="text-align:right;padding:9px 8px;font-weight:700;color:var(--t2);font-size:11px">% Desc</th>'
+    +       '<th style="text-align:right;padding:9px 8px;font-weight:700;color:var(--t2);font-size:11px">P. Unit.</th>'
+    +       '<th style="text-align:right;padding:9px 8px;font-weight:700;color:var(--t2);font-size:11px">Total</th>'
+    +     '</tr></thead><tbody>'+rowsHtml+'</tbody>'
+    +     '<tfoot><tr style="background:#F1F6F3"><td colspan="4" style="padding:9px 8px;text-align:right;font-weight:700;font-size:12.5px">TOTAL</td>'
+    +       '<td style="padding:9px 8px;text-align:right;font-weight:700;font-size:13px;color:#1A5C3A">'+fmtMoney(p.total||0)+'</td></tr></tfoot>'
+    +     '</table>'
+    +   '</div>'
+    +   (p.comentario ? '<div style="margin-top:.7rem;padding:8px 11px;background:#F8FAFC;border-radius:7px;font-size:12px"><b>Comentario:</b> '+esc_(p.comentario)+'</div>' : '')
+    +   '<div style="display:flex;justify-content:end;gap:8px;margin-top:.9rem">'
+    +     '<button onclick="cerrarDetallePedido()" style="padding:9px 16px;border-radius:7px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:700;cursor:pointer;font-family:var(--f)">Cerrar</button>'
+    +   '</div>'
+    + '</div></div>';
+  var host = document.getElementById('modal-detalle-ped');
+  if (host) host.remove();
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstChild);
+}
+function cerrarDetallePedido(){
+  var m = document.getElementById('modal-detalle-ped');
+  if (m) m.remove();
 }
 // Rep puede eliminar su propio pedido SOLO si aún no ha sido procesado (enviado/borrador)
 async function eliminarMiPedido(id){
