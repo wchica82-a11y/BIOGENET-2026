@@ -2215,7 +2215,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-09-11-140000';
+const APP_VERSION = '2026-09-14-150000';
 
 async function checkForUpdates() {
   try {
@@ -2284,7 +2284,7 @@ function getAllReps(){
   Object.keys(MERCADERISTAS||{}).forEach(function(r){ s.add(r); });
   return Array.from(s).sort();
 }
-const REP_LINEA = {"ALEXANDRA ROLDAN":"LINEA 2","ALFONSO MURILLO":"LINEA 2","CARLOS REYES":"LINEA 1","CRISTOPHER MATEHU":"LINEA 2","GABRIEL BRAVO":"LINEA 1","JAVIER PISCO":"LINEA 2","JEAN PAUL MAINGON":"LINEA 2","JOHANNA VERA":"LINEA 1","JOSE MOLESTINA":"LINEA 2","LINA VELASQUEZ":"LINEA 2","LISSETTE SORIANO":"LINEA 1","MANUEL DE LA ESSE":"LINEA 2","MARIA PIA ORTIZ":"LINEA 2","MELISSA MENOSCAL":"LINEA 1","MICHEL MOTA":"LINEA 1","RICARDO SAN ANDRES":"LINEA 1","YESENIA VELEZ":"LINEA 1","DANIEL AGUILAR":"LINEA 1"};
+const REP_LINEA = {"ALEXANDRA ROLDAN":"LINEA 2","ALFONSO MURILLO":"LINEA 2","CARLOS REYES":"LINEA 1","DANIEL AGUILAR":"LINEA 1","GABRIEL BRAVO":"LINEA 1","GABRIELA SELLAN":"LINEA 2","JOHANNA VERA":"LINEA 1","JOSE GOMEZ":"LINEA 2","JOSE MOLESTINA":"LINEA 2","KARLA SALAZAR":"LINEA 1","KATHERINE ANDRADE":"LINEA 2","LINA VELASQUEZ":"LINEA 2","LISSETTE SORIANO":"LINEA 1","MANUEL DE LA ESSE":"LINEA 2","MARIA PIA ORTIZ":"LINEA 2","MELISSA MENOSCAL":"LINEA 1","MICHEL MOTA":"LINEA 1","PRISCILA RIVERA":"LINEA 2","ROMMEL TORAL":"LINEA 1","YESENIA VELEZ":"LINEA 1"};
 const PROD_LINEA = {"LINEA 1": ["ALZANOX", "CERBROCIL", "CLEAR FACE", "COLESTIL CAPSULAS", "COLESTIL SOBRES", "CONDROSOL TRIO", "DIABAID", "DIGEROS GOTAS", "DIGEROS FORTE", "ESTEATOL", "ESTOMACOL", "KUFER Q CIRRO", "KUFER Q ECV", "LEVOFREE", "OSTEOBLASTOL", "RIPROXEN"], "LINEA 2": ["AMILIPOL", "CONDROSOL TRIO", "DIABAID", "DIGEROS FORTE", "DIGEROS GOTAS", "DOLITIL 25MG", "DOLITIL 75 MG", "EPIHIERRO SOBRES", "EPIHIERRO SUSPENSION", "ESTEATOL", "ESTOMACOL", "FLEXOMOTIL", "KUFER Q CIRRO", "KUFER Q ECV", "MICROBAC", "NUTRALOGICS", "SEDOTOS", "SEDOTOS DUO", "SINDROMETA"]};
 
 let CU = null, selDoc = null, histMode = 'visitados', histTipo = 'medicos', histCycleNum = null;
@@ -3229,10 +3229,45 @@ async function loadPanelSolicitudes(){
 }
 async function loadPanelOverrides(){
   try {
+    // Primero intentar reemplazar el PANEL completo desde panel_costa (si tiene datos)
+    if (typeof loadPanelReplacement === 'function') await loadPanelReplacement();
     var rows = await sbRequest('GET', '/panel_overrides?order=created_at.asc&limit=1000');
     PANEL_OVERRIDES = rows || [];
     applyPanelOverrides();
   } catch(e){ console.warn('loadPanelOverrides falló:', e.message); }
+}
+// Reemplazo total del PANEL desde tabla panel_costa. Si la tabla tiene filas,
+// se borran todas las claves de PANEL y se reconstruye desde la tabla.
+// Se ejecuta ANTES de applyPanelOverrides para que overrides posteriores
+// (altas/bajas nuevas) sigan funcionando encima.
+async function loadPanelReplacement(){
+  try {
+    var offset = 0, all = [];
+    while(true){
+      var chunk = await sbRequest('GET', '/panel_costa?order=rep.asc&limit=1000&offset='+offset);
+      if (!chunk || chunk.length === 0) break;
+      all = all.concat(chunk);
+      if (chunk.length < 1000) break;
+      offset += 1000;
+    }
+    if (!all || all.length === 0) return; // Tabla vacía = no hacer nada
+    // Borrar todas las claves de PANEL (mutación, no reasignación)
+    Object.keys(PANEL).forEach(function(k){ delete PANEL[k]; });
+    // Reconstruir desde la tabla
+    all.forEach(function(r){
+      var rep = (r.rep||'').trim();
+      if (!rep) return;
+      if (!PANEL[rep]) PANEL[rep] = [];
+      PANEL[rep].push({
+        nombre: (r.nombre||'').trim(),
+        especialidad: r.especialidad||'',
+        ciudad: r.ciudad||'',
+        direccion: r.direccion||'',
+        tipo: r.tipo||''
+      });
+    });
+    console.log('PANEL reemplazado desde panel_costa: '+all.length+' médicos');
+  } catch(e){ console.warn('loadPanelReplacement falló:', e.message); }
 }
 function applyPanelOverrides(){
   (PANEL_OVERRIDES||[]).forEach(function(o){
