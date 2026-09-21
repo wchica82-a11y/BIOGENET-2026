@@ -3243,6 +3243,11 @@ async function loadPanelOverrides(){
   try {
     // Primero intentar reemplazar el PANEL completo desde panel_costa (si tiene datos)
     if (typeof loadPanelReplacement === 'function') await loadPanelReplacement();
+    // Las parejas tienen que estar cargadas antes de aplicar las altas: si no,
+    // el alta entra solo al panel de quien la pidio y no al del companero.
+    if (!REP_PAIRS || Object.keys(REP_PAIRS).length === 0){
+      if (typeof loadRepPairs === 'function') { try { await loadRepPairs(); } catch(e){} }
+    }
     var rows = await sbRequest('GET', '/panel_overrides?order=created_at.asc&limit=1000');
     PANEL_OVERRIDES = rows || [];
     applyPanelOverrides();
@@ -3281,24 +3286,43 @@ async function loadPanelReplacement(){
     console.log('PANEL reemplazado desde panel_costa: '+all.length+' médicos');
   } catch(e){ console.warn('loadPanelReplacement falló:', e.message); }
 }
+// Devuelve el representante y su companero: comparten panel, asi que un
+// alta o una baja tiene que reflejarse en los dos. La pareja se aprueba
+// entre ambos, de modo que el cambio ya viene consensuado.
+function repYCompanero(rep){
+  var out = [rep];
+  var comp = (REP_PAIRS||{})[rep];
+  if (!comp){
+    // Red de seguridad por si solo existe el lado contrario en rep_pairs
+    Object.keys(REP_PAIRS||{}).forEach(function(k){
+      if (REP_PAIRS[k] === rep) comp = k;
+    });
+  }
+  if (comp && comp !== rep && out.indexOf(comp) < 0) out.push(comp);
+  return out;
+}
+
 function applyPanelOverrides(){
   (PANEL_OVERRIDES||[]).forEach(function(o){
-    if (!PANEL[o.rep]) PANEL[o.rep] = [];
     var nombreU = (o.nombre||'').toUpperCase().trim();
-    if (o.accion === 'add'){
-      var exists = PANEL[o.rep].some(function(m){ return (m.nombre||'').toUpperCase().trim() === nombreU; });
-      if (!exists){
-        PANEL[o.rep].push({
-          nombre: o.nombre,
-          especialidad: o.especialidad || '',
-          ciudad: o.ciudad || '',
-          direccion: o.direccion || '',
-          tipo: o.tipo_medico || ''
-        });
+    if (!nombreU) return;
+    repYCompanero(o.rep).forEach(function(rep){
+      if (!PANEL[rep]) PANEL[rep] = [];
+      if (o.accion === 'add'){
+        var exists = PANEL[rep].some(function(m){ return (m.nombre||'').toUpperCase().trim() === nombreU; });
+        if (!exists){
+          PANEL[rep].push({
+            nombre: o.nombre,
+            especialidad: o.especialidad || '',
+            ciudad: o.ciudad || '',
+            direccion: o.direccion || '',
+            tipo: o.tipo_medico || ''
+          });
+        }
+      } else if (o.accion === 'remove'){
+        PANEL[rep] = PANEL[rep].filter(function(m){ return (m.nombre||'').toUpperCase().trim() !== nombreU; });
       }
-    } else if (o.accion === 'remove'){
-      PANEL[o.rep] = PANEL[o.rep].filter(function(m){ return (m.nombre||'').toUpperCase().trim() !== nombreU; });
-    }
+    });
   });
 }
 
@@ -4082,11 +4106,12 @@ function _pnlHasGpsFarm(cod){
 function _pnlGpsBtn(u, nombre){
   if (u && u.lat && u.lng){
     var url = 'https://www.google.com/maps/search/?api=1&query=' + u.lat + ',' + u.lng;
-    // Si la capturó otro rep, se marca para que se sepa de dónde viene.
+    // Verde = la capturó este representante. Azul = viene del panel
+    // compartido. No se muestra el nombre de quien la capturó.
     var ajena = (typeof CU !== 'undefined' && u.rep && u.rep !== CU);
     var bg    = ajena ? '#2E6DA4' : '#1A5C3A';
-    var txt   = ajena ? '📍 Maps · ' + String(u.rep).split(' ')[0] : '📍 Google Maps';
-    var tit   = ajena ? 'Ubicación capturada por ' + u.rep : 'Ubicación capturada por ti';
+    var txt   = '📍 Ver ubicación';
+    var tit   = ajena ? 'Ubicación del panel compartido' : 'Ubicación capturada por ti';
     return '<a href="'+url+'" target="_blank" rel="noopener" title="'+tit+'" style="display:inline-block;padding:7px 10px;border-radius:7px;background:'+bg+';color:#fff;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;font-family:var(--f)">'+txt+'</a>';
   }
   return '<span style="display:inline-block;padding:7px 10px;border-radius:7px;background:#f2f2f2;color:#999;font-size:11.5px;font-weight:600;white-space:nowrap;font-family:var(--f)" title="Aún no se ha capturado la ubicación GPS de este punto">Sin GPS</span>';
@@ -7202,7 +7227,7 @@ function gpsOnSelect(tipo){
   if (existing){
     var ajena = existing.rep && typeof CU !== 'undefined' && existing.rep !== CU;
     if (ajena){
-      st.textContent = 'Ubicacion capturada por ' + existing.rep + ' (+/- '+(existing.precision_m||'?')+' m). '
+      st.textContent = 'Ubicacion del panel compartido (+/- '+(existing.precision_m||'?')+' m). '
                      + 'Te sirve para llegar. Cuando estes en el consultorio captura la tuya.';
       st.style.color = '#2E6DA4';
       btn.textContent = '\u{1F4CD} Capturar mi ubicacion';
