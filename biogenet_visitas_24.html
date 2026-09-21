@@ -765,7 +765,8 @@ textarea{resize:none;height:88px;line-height:1.5}
             <label>Resultado</label>
             <select id="gv-resultado" onchange="renderGVis()">
               <option value="todos" selected>Todos (panel completo)</option>
-              <option value="no_visitados">No visitados</option>
+              <option value="no_visitados">No visitados (en el ciclo)</option>
+              <option value="nunca">Nunca visitados (historial completo)</option>
             </select>
           </div>
         </div>
@@ -5340,6 +5341,9 @@ function renderGVis(){
     if (cy) cicloLabel = 'Ciclo ' + cy.num + ' (' + fmtShort(cy.ini) + ' → ' + fmtShort(cy.fin) + ')';
   }
 
+  // === BRANCH 0: Nunca visitados (no depende del ciclo) ===
+  if (resFil === 'nunca') { renderNuncaVisitados(rep, cy, tipo, q, panelTipo); return; }
+
   // === BRANCH 1: No visitados ===
   if (resFil === 'no_visitados') { renderNoVisitados(rep, cy, tipo, q, cicloLabel, panelTipo); return; }
 
@@ -5724,6 +5728,143 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
   if (el) el.innerHTML = html || '<div class="empty"><p>Sin resultados.</p></div>';
 }
 
+// ── Ciclos visibles en los badges (del 5 en adelante, ultimos 5) ──
+function histCiclosVis(){
+  var allCyc = (typeof getAllCycles==='function') ? getAllCycles() : [];
+  return allCyc.filter(function(c){ return c.num >= 5; })
+               .sort(function(a,b){ return a.num - b.num; })
+               .slice(-5);
+}
+// Fila de badges por ciclo para un medico/farmacia. Version global, para
+// poder usarla tambien en "No visitados" y "Nunca visitados".
+function badgesCicloHtml(arr, cy){
+  arr = arr || [];
+  return histCiclosVis().map(function(c){
+    var vEf = arr.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && !esNE(x); });
+    var vNE = !vEf && arr.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && esNE(x); });
+    var isCurrent = CYCLE && c.num === CYCLE.num;
+    var isSel = cy && c.num === cy.num;
+    var bg = isSel ? 'background:#FFF3CD;' : (isCurrent ? 'background:#FFF9C4;' : '');
+    var content, color;
+    if (vEf){ content = fmtShort(vEf.fecha) + ' <span style="color:#1A5C3A">\u2713</span>'; color = '#1A5C3A'; }
+    else if (vNE){ content = fmtShort(vNE.fecha) + ' <span style="color:#C0392B">\u274C</span>'; color = '#C0392B'; }
+    else { content = '<span style="color:#C0392B;font-weight:700">\u2014 sin visita</span>'; color = '#C0392B'; }
+    return '<div style="' + bg + 'padding:6px 8px;border:1px solid var(--b);border-radius:6px;min-width:130px;text-align:center">' +
+      '<div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">Ciclo ' + c.num + (isCurrent?' \u00b7 actual':'') + (isSel && !isCurrent?' \u00b7 sel':'') + '</div>' +
+      '<div style="font-size:12px;color:' + color + ';font-weight:600">' + content + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Nunca visitados: sin una sola visita efectiva en todo el historial ──
+// No depende del ciclo. Distingue tres situaciones que se ven iguales en la
+// vista por ciclo pero significan cosas muy distintas:
+//   · sin ningun registro          -> nunca se intento
+//   · solo ausencias (\u274C)            -> si se fue, no se le encontro
+//   · visitado por otro rep        -> viene de un traspaso de panel
+function renderNuncaVisitados(rep, cy, tipoFil, q, panelTipo){
+  var summary = document.getElementById('gv-summary');
+  var el = document.getElementById('gvlist');
+  if (!rep){
+    if (summary) summary.innerHTML = '<div class="card" style="padding:.9rem 1.1rem;background:#FEF3C7;border-color:#F59E0B"><div style="font-size:13px;color:#92400E">\u26A0\uFE0F Para ver "Nunca visitados" selecciona un representante.</div></div>';
+    if (el) el.innerHTML = '';
+    return;
+  }
+
+  var panMed = (typeof PANEL !== 'undefined' && PANEL[rep]) ? PANEL[rep] : [];
+
+  // Historial del rep y de los demas, por medico
+  var histRep = {}, histOtros = {};
+  visits.filter(function(v){ return v.tipo_visita !== 'farmacia'; }).forEach(function(v){
+    var k = (v.medico||'').toUpperCase().trim();
+    if (!k) return;
+    if (v.rep === rep) (histRep[k] = histRep[k] || []).push(v);
+    else if (!esNE(v))  (histOtros[k] = histOtros[k] || []).push(v);
+  });
+
+  var lista = panMed.filter(function(d){
+    var arr = histRep[(d.nombre||'').toUpperCase().trim()] || [];
+    return !arr.some(function(x){ return !esNE(x); });   // ni una efectiva
+  });
+  if (panelTipo) lista = lista.filter(function(d){ return (d.tipo||'') === panelTipo; });
+  if (tipoFil === 'farmacia') lista = [];
+  if (q) lista = lista.filter(function(d){
+    return (d.nombre||'').toUpperCase().includes(q) || (d.especialidad||'').toUpperCase().includes(q) || (d.ciudad||'').toUpperCase().includes(q);
+  });
+
+  // Clasificar
+  function clase(d){
+    var k = (d.nombre||'').toUpperCase().trim();
+    var arr = histRep[k] || [];
+    if (arr.length) return 'ausencias';                 // solo \u274C
+    if ((histOtros[k]||[]).length) return 'traspaso';   // lo visito otro rep
+    return 'sin_registro';
+  }
+  var cnt = {sin_registro:0, ausencias:0, traspaso:0};
+  lista.forEach(function(d){ cnt[clase(d)]++; });
+
+  if (summary){
+    summary.innerHTML = '<div class="card" style="padding:.9rem 1.1rem;background:#FEF9F0;border-color:#F59E0B">' +
+      '<div style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem">Nunca visitados \u2014 historial completo \u00b7 ' + esc_(rep) + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">' +
+        '<div><div style="font-size:22px;font-weight:700;color:#C0392B">' + lista.length + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Nunca visitados</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;color:#C0392B">' + cnt.sin_registro + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Sin ning\u00fan registro</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;color:#C47A0A">' + cnt.ausencias + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">S\u00f3lo ausencias \u274C</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;color:#2E6DA4">' + cnt.traspaso + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Visitados por otro rep</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;color:var(--t)">' + panMed.length + '</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Panel total</div></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--t3);margin-top:.6rem">Sin una sola visita efectiva de este representante en todo el historial. Las ausencias (\u274C) no cuentan como visita.</div>' +
+    '</div>';
+  }
+
+  if (!lista.length){
+    if (el) el.innerHTML = '<div class="empty"><div class="empty-ico">\u2705</div><p>Todos los m\u00e9dicos del panel tienen al menos una visita efectiva.</p></div>';
+    return;
+  }
+
+  var ORD = {sin_registro:0, ausencias:1, traspaso:2};
+  lista.sort(function(a,b){
+    var ca = ORD[clase(a)], cb = ORD[clase(b)];
+    if (ca !== cb) return ca - cb;
+    return (a.nombre||'').localeCompare(b.nombre||'');
+  });
+
+  var ET = {
+    sin_registro: ['SIN NING\u00daN REGISTRO', '#C0392B'],
+    ausencias:    ['S\u00d3LO AUSENCIAS', '#C47A0A'],
+    traspaso:     ['LO VISIT\u00d3 OTRO REP', '#2E6DA4']
+  };
+
+  var html = '<div style="font-size:13px;color:var(--t);margin:.6rem 0 .5rem 0;font-weight:700">\uD83D\uDC68\u200D\u2695\uFE0F Nunca visitados (' + lista.length + ')</div>';
+  html += '<div class="card" style="padding:0;overflow:hidden">';
+  html += lista.map(function(d){
+    var k = (d.nombre||'').toUpperCase().trim();
+    var arr = histRep[k] || [];
+    var cl = clase(d), et = ET[cl];
+    var extra = '';
+    if (cl === 'ausencias'){
+      var ult = arr.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); })[0];
+      extra = arr.length + ' intento' + (arr.length>1?'s':'') + ', \u00faltimo ' + fmtShort(ult.fecha);
+    } else if (cl === 'traspaso'){
+      var o = (histOtros[k]||[]).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); })[0];
+      extra = '\u00daltima visita del panel compartido: ' + fmtShort(o.fecha);
+    } else {
+      extra = 'Nunca se registr\u00f3 ni un intento';
+    }
+    return '<div style="padding:9px 12px;border-bottom:1px solid var(--b)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:.45rem">' +
+        '<div><div style="font-size:13px;font-weight:600">' + esc_(d.nombre) + '</div>' +
+        '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + esc_((d.especialidad||'') + ' \u00b7 ' + (d.ciudad||'') + (d.tipo?' \u00b7 '+d.tipo:'')) + '</div>' +
+        '<div style="font-size:11px;color:' + et[1] + ';margin-top:3px">' + esc_(extra) + '</div></div>' +
+        '<span style="font-size:10.5px;color:#fff;font-weight:700;background:' + et[1] + ';padding:3px 8px;border-radius:5px;white-space:nowrap">' + et[0] + '</span>' +
+      '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' + badgesCicloHtml(arr, cy) + '</div>' +
+    '</div>';
+  }).join('');
+  html += '</div>';
+  if (el) el.innerHTML = html;
+}
+
 // ── Renderiza pendientes de visitar (No visitados) ──
 function renderNoVisitados(rep, cy, tipoFil, q, cicloLabel, panelTipo){
   var summary = document.getElementById('gv-summary');
@@ -5791,11 +5932,27 @@ function renderNoVisitados(rep, cy, tipoFil, q, cicloLabel, panelTipo){
   if (medPend.length) {
     html += '<div style="font-size:13px;color:var(--t);margin:.6rem 0 .5rem 0;font-weight:700">👨‍⚕️ Médicos pendientes (' + medPend.length + ')</div>';
     html += '<div class="card" style="padding:0;overflow:hidden;margin-bottom:.9rem">';
+    // Historial por medico, para mostrar los badges de ciclo sin perder contexto
+    var histRep = {};
+    visits.filter(function(v){ return v.rep === rep && v.tipo_visita !== 'farmacia'; })
+          .forEach(function(v){
+            var k = (v.medico||'').toUpperCase().trim();
+            (histRep[k] = histRep[k] || []).push(v);
+          });
     html += medPend.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||''); }).map(function(d){
-      return '<div style="padding:9px 12px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center;gap:12px">' +
-        '<div><div style="font-size:13px;font-weight:600">' + esc_(d.nombre) + '</div>' +
-        '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + esc_((d.especialidad||'') + ' · ' + (d.ciudad||'') + (d.tipo?' · '+d.tipo:'')) + '</div></div>' +
-        '<span style="font-size:10.5px;color:#C47A0A;font-weight:700;background:#FEF3C7;padding:3px 8px;border-radius:5px;white-space:nowrap">SIN VISITAR</span>' +
+      var k = (d.nombre||'').toUpperCase().trim();
+      var arr = histRep[k] || [];
+      var nunca = !arr.some(function(x){ return !esNE(x); });
+      return '<div style="padding:9px 12px;border-bottom:1px solid var(--b)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:.45rem">' +
+          '<div><div style="font-size:13px;font-weight:600">' + esc_(d.nombre) + '</div>' +
+          '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + esc_((d.especialidad||'') + ' \u00b7 ' + (d.ciudad||'') + (d.tipo?' \u00b7 '+d.tipo:'')) + '</div></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' +
+            (nunca ? '<span style="font-size:10.5px;color:#fff;font-weight:700;background:#C0392B;padding:3px 8px;border-radius:5px;white-space:nowrap">NUNCA VISITADO</span>' : '') +
+            '<span style="font-size:10.5px;color:#C47A0A;font-weight:700;background:#FEF3C7;padding:3px 8px;border-radius:5px;white-space:nowrap">SIN VISITAR</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">' + badgesCicloHtml(arr, cy) + '</div>' +
       '</div>';
     }).join('');
     html += '</div>';
