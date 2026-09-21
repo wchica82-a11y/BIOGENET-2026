@@ -1352,6 +1352,18 @@ async function sbRequest(method, path, body){
   return await r.json();
 }
 
+// ── Regla única: ¿la visita fue "No lo encontré"? ──────────────────────
+// Una ausencia NUNCA cuenta como visita efectiva y NUNCA bloquea que
+// después se registre la visita real en el mismo ciclo.
+// Además del flag noEncontro se revisa el texto de "resultado", para que
+// los registros viejos guardados sin el flag también se traten bien.
+function esNE(v){
+  if(!v) return false;
+  if(v.noEncontro === true || v.noEncontro === 1 || v.noEncontro === 'true') return true;
+  var r = (v.resultado == null ? '' : String(v.resultado)).trim().toLowerCase();
+  return r === 'no lo encontr\u00e9' || r === 'no lo encontre';
+}
+
 // Convierte un objeto visita (formato JS local) a fila para la tabla
 function visitToRow(v){
   return {
@@ -2052,7 +2064,7 @@ function calcSaldoMuestras(rep, ciclo_num) {
   // Entregado = suma de muestras en visitas del rep DENTRO DEL RANGO DE FECHAS DEL CICLO
   var entregado = {};
   visits.filter(function(v){
-    return v.rep === rep && !v.noEncontro && v.fecha >= iniDate && v.fecha <= finDate;
+    return v.rep === rep && !esNE(v) && v.fecha >= iniDate && v.fecha <= finDate;
   }).forEach(function(v){
     (v.muestras || []).forEach(function(m){
       if (typeof m === 'object' && m.entregado !== false) {
@@ -4061,8 +4073,7 @@ async function initMisPaneles(){
   pnlSwitch(PNL_MODE || 'medicos');
 }
 function _pnlHasGpsMed(rep, nombre){
-  if (!UBIC_NORM_IDX) rebuildUbicIndex();
-  return UBIC_NORM_IDX['medico:' + (rep||'') + '||' + normGpsName(nombre||'')] || null;
+  return ubicGetMed(rep, nombre);
 }
 function _pnlHasGpsFarm(cod){
   if (!UBIC_NORM_IDX) rebuildUbicIndex();
@@ -4071,7 +4082,12 @@ function _pnlHasGpsFarm(cod){
 function _pnlGpsBtn(u, nombre){
   if (u && u.lat && u.lng){
     var url = 'https://www.google.com/maps/search/?api=1&query=' + u.lat + ',' + u.lng;
-    return '<a href="'+url+'" target="_blank" rel="noopener" style="display:inline-block;padding:7px 10px;border-radius:7px;background:#1A5C3A;color:#fff;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;font-family:var(--f)">📍 Google Maps</a>';
+    // Si la capturó otro rep, se marca para que se sepa de dónde viene.
+    var ajena = (typeof CU !== 'undefined' && u.rep && u.rep !== CU);
+    var bg    = ajena ? '#2E6DA4' : '#1A5C3A';
+    var txt   = ajena ? '📍 Maps · ' + String(u.rep).split(' ')[0] : '📍 Google Maps';
+    var tit   = ajena ? 'Ubicación capturada por ' + u.rep : 'Ubicación capturada por ti';
+    return '<a href="'+url+'" target="_blank" rel="noopener" title="'+tit+'" style="display:inline-block;padding:7px 10px;border-radius:7px;background:'+bg+';color:#fff;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;font-family:var(--f)">'+txt+'</a>';
   }
   return '<span style="display:inline-block;padding:7px 10px;border-radius:7px;background:#f2f2f2;color:#999;font-size:11.5px;font-weight:600;white-space:nowrap;font-family:var(--f)" title="Aún no se ha capturado la ubicación GPS de este punto">Sin GPS</span>';
 }
@@ -4604,7 +4620,7 @@ function guardar(){
       const finEff=today>cyc.fin?today:cyc.fin;
       const norm=s=>(s||'').trim().toUpperCase();
       const docName=norm(selDoc.nombre);
-      const dup=visits.find(v=>v.rep===CU&&norm(v.medico)===docName&&!v.noEncontro&&v.fecha>=cyc.ini&&v.fecha<=finEff);
+      const dup=visits.find(v=>v.rep===CU&&norm(v.medico)===docName&&!esNE(v)&&v.fecha>=cyc.ini&&v.fecha<=finEff);
       if(dup){
         const err2=document.getElementById('reg-err');
         err2.style.display='block';
@@ -4673,7 +4689,7 @@ function renderHist(){
   // FILTRAR solo visitas del CICLO SELECCIONADO
   const mv = cyc ? allRepVisits.filter(v=>v.fecha>=cyc.ini && v.fecha<=cyc.fin) : allRepVisits;
   const today=todayISO();
-  const ef=v=>!v.noEncontro;
+  const ef=v=>!esNE(v);
   const isFarm=v=>v.tipo_visita==='farmacia';
   const isMed=v=>v.tipo_visita!=='farmacia';
   const hoy=mv.filter(v=>v.fecha===today&&ef(v)).length;
@@ -5137,7 +5153,7 @@ function renderCobertura(){
     // Visited doctors (unique, dentro del rango del ciclo si está filtrado)
     let repVisits=visits.filter(v=>v.rep===rep);
     if(cicloRange) repVisits=repVisits.filter(v=>v.fecha>=cicloRange.ini&&v.fecha<=cicloRange.fin);
-    const visitedAll=new Set(repVisits.filter(v=>!v.noEncontro&&v.tipo_visita!=='farmacia').map(v=>v.medico.toUpperCase()));
+    const visitedAll=new Set(repVisits.filter(v=>!esNE(v)&&v.tipo_visita!=='farmacia').map(v=>v.medico.toUpperCase()));
 
     const visCIU=panelCIU.filter(d=>visitedAll.has(d.nombre.toUpperCase())).length;
     const visGIR=panelGIR.filter(d=>visitedAll.has(d.nombre.toUpperCase())).length;
@@ -5148,7 +5164,7 @@ function renderCobertura(){
     const pctGIR=panelGIR.length?Math.round(visGIR/panelGIR.length*100):0;
 
     // Visited pharmacies (unique, in period)
-    const visitedFarms=new Set(repVisits.filter(v=>v.tipo_visita==='farmacia'&&!v.noEncontro).map(v=>String(v.farmacia_cod)));
+    const visitedFarms=new Set(repVisits.filter(v=>v.tipo_visita==='farmacia'&&!esNE(v)).map(v=>String(v.farmacia_cod)));
     const farmVis=farmPanel.filter(f=>visitedFarms.has(String(f.cod))).length;
     const farmTot=farmPanel.length;
     const farmPct=farmTot?Math.round(farmVis/farmTot*100):0;
@@ -5182,7 +5198,7 @@ function renderCobertura(){
 
 function renderGRes(){
   const today=todayISO(), mes=today.slice(0,7);
-  const ef=v=>!v.noEncontro;
+  const ef=v=>!esNE(v);
 
   // Stats cards
   const hoy      = visits.filter(v=>v.fecha===today&&ef(v)&&v.tipo_visita!=='farmacia').length;
@@ -5312,7 +5328,7 @@ function renderGVis(){
   if (rep) f = f.filter(function(v){ return v.rep === rep; });
   if (tipo === 'medico') f = f.filter(function(v){ return v.tipo_visita !== 'farmacia'; });
   else if (tipo === 'farmacia') f = f.filter(function(v){ return v.tipo_visita === 'farmacia'; });
-  if (resFil === 'efectivo') f = f.filter(function(v){ return !v.noEncontro; });
+  if (resFil === 'efectivo') f = f.filter(function(v){ return !esNE(v); });
   if (q) f = f.filter(function(v){
     return (v.medico||'').toUpperCase().includes(q) ||
            (v.farmacia||'').toUpperCase().includes(q) ||
@@ -5428,8 +5444,8 @@ function renderGVisAgrupado(f, cy, rep, tipoFil){
       var allV = byMedAll[k] || [];
       // Historial por ciclo
       var histHtml = histCiclos.map(function(c){
-        var v = allV.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && !x.noEncontro; });
-        var vNoEnc = !v && allV.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && x.noEncontro; });
+        var v = allV.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && !esNE(x); });
+        var vNoEnc = !v && allV.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && esNE(x); });
         var isCurrent = CYCLE && c.num === CYCLE.num;
         var bg = isCurrent ? 'background:#FFF9C4;' : '';
         var content, color;
@@ -5474,8 +5490,8 @@ function renderGVisAgrupado(f, cy, rep, tipoFil){
       // Ordenar visitas por fecha
       g.visitas.sort(function(a,b){ return a.ts.localeCompare(b.ts); });
       var fechasHtml = g.visitas.map(function(v){
-        var color = v.noEncontro ? '#C0392B' : '#1A5C3A';
-        var icon = v.noEncontro ? '❌' : '✓';
+        var color = esNE(v) ? '#C0392B' : '#1A5C3A';
+        var icon = esNE(v) ? '❌' : '✓';
         var muestras = (v.muestras||[]).filter(function(m){ return typeof m === 'object'; });
         var mTxt = muestras.length ? muestras.map(function(m){ return m.producto + ' ×' + (m.cantidad||1); }).join(', ') : '';
         return '<div style="padding:6px 10px;border-left:3px solid ' + color + ';background:var(--s2);margin-bottom:4px;border-radius:4px">' +
@@ -5568,12 +5584,12 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
   if (cicloEnfoque) {
     panelMed.forEach(function(m){
       var arr = byMed[(m.nombre||'').toUpperCase().trim()] || [];
-      var v = arr.find(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
+      var v = arr.find(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
       if (v) medVis++; else medNoVis++;
     });
     panelFarm.forEach(function(f){
       var arr = byFarm[String(f.cod||'')] || [];
-      var v = arr.find(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
+      var v = arr.find(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
       if (v) farmVis++; else farmNoVis++;
     });
   }
@@ -5597,8 +5613,8 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
   // Helper que arma la fila de badges por ciclo
   function badgesHtml(arr){
     return histCiclos.map(function(c){
-      var vEf = arr.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && !x.noEncontro; });
-      var vNE = !vEf && arr.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && x.noEncontro; });
+      var vEf = arr.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && !esNE(x); });
+      var vNE = !vEf && arr.find(function(x){ return x.fecha >= c.ini && x.fecha <= c.fin && esNE(x); });
       var isCurrent = CYCLE && c.num === CYCLE.num;
       var isSel = cy && c.num === cy.num;
       var bg = isSel ? 'background:#FFF3CD;' : (isCurrent ? 'background:#FFF9C4;' : '');
@@ -5623,8 +5639,8 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
       // Ordenar: primero los NO visitados en el ciclo enfoque (rojos), luego el resto — dentro de cada grupo alfabético por nombre
       panelMed.sort(function(a,b){
         if (cicloEnfoque) {
-          var va = (byMed[(a.nombre||'').toUpperCase().trim()]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
-          var vb = (byMed[(b.nombre||'').toUpperCase().trim()]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
+          var va = (byMed[(a.nombre||'').toUpperCase().trim()]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
+          var vb = (byMed[(b.nombre||'').toUpperCase().trim()]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
           if (va !== vb) return va ? 1 : -1;  // no visitados primero
         }
         return (a.nombre||'').localeCompare(b.nombre||'');
@@ -5632,7 +5648,7 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
       html += '<div style="font-size:12px;color:var(--t2);margin:.4rem 0 .6rem 0;font-weight:600">👨‍⚕️ Médicos — panel completo (' + panelMed.length + ')</div>';
       html += panelMed.map(function(m){
         var arr = byMed[(m.nombre||'').toUpperCase().trim()] || [];
-        var visitEnf = cicloEnfoque && arr.some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
+        var visitEnf = cicloEnfoque && arr.some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
         var borderCol = cicloEnfoque && !visitEnf ? '#C0392B' : 'var(--b)';
         return '<div style="border:1px solid ' + borderCol + ';border-radius:var(--rad);padding:.85rem 1.1rem;margin-bottom:.6rem;background:var(--s)">' +
           '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:.6rem">' +
@@ -5655,8 +5671,8 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
     } else {
       panelFarm.sort(function(a,b){
         if (cicloEnfoque) {
-          var va = (byFarm[String(a.cod||'')]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
-          var vb = (byFarm[String(b.cod||'')]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
+          var va = (byFarm[String(a.cod||'')]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
+          var vb = (byFarm[String(b.cod||'')]||[]).some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
           if (va !== vb) return va ? 1 : -1;
         }
         return (a.pdv||'').localeCompare(b.pdv||'');
@@ -5664,7 +5680,7 @@ function renderPanelCompleto(rep, cy, tipoFil, q, cicloLabel, panelTipo){
       html += '<div style="font-size:12px;color:var(--t2);margin:.9rem 0 .6rem 0;font-weight:600">🏪 Farmacias — panel completo (' + panelFarm.length + ')</div>';
       html += panelFarm.map(function(f){
         var arr = byFarm[String(f.cod||'')] || [];
-        var visitEnf = cicloEnfoque && arr.some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !x.noEncontro; });
+        var visitEnf = cicloEnfoque && arr.some(function(x){ return x.fecha >= cicloEnfoque.ini && x.fecha <= cicloEnfoque.fin && !esNE(x); });
         var borderCol = cicloEnfoque && !visitEnf ? '#C0392B' : 'var(--b)';
         return '<div style="border:1px solid ' + borderCol + ';border-radius:var(--rad);padding:.85rem 1.1rem;margin-bottom:.6rem;background:var(--s)">' +
           '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:.6rem">' +
@@ -5705,7 +5721,7 @@ function renderNoVisitados(rep, cy, tipoFil, q, cicloLabel, panelTipo){
   var panFarm = (typeof FARM_PANEL !== 'undefined' && FARM_PANEL[fkey]) ? FARM_PANEL[fkey] : [];
 
   // Visitas EFECTIVAS del rep en el ciclo
-  var vc = visits.filter(function(v){ return v.rep === rep && v.fecha >= cy.ini && v.fecha <= cy.fin && !v.noEncontro; });
+  var vc = visits.filter(function(v){ return v.rep === rep && v.fecha >= cy.ini && v.fecha <= cy.fin && !esNE(v); });
   var medVisitedSet = new Set(vc.filter(function(v){ return v.tipo_visita !== 'farmacia'; }).map(function(v){ return (v.medico||'').toUpperCase().trim(); }));
   // Farmacias visitadas: registrar por cod Y por nombre (fallback si dedup cambió el cod)
   var farmVisitedByCod = new Set();
@@ -5836,7 +5852,7 @@ function saveCycleForm(){
   }
   let msg='<span style="color:var(--g)">✓ Ciclo '+num+' guardado correctamente ('+days+' días).</span>';
   if(isNewCycle){
-    const prevVisits=visits.filter(v=>v.fecha>=prevCycle.ini&&v.fecha<=prevCycle.fin&&!v.noEncontro).length;
+    const prevVisits=visits.filter(v=>v.fecha>=prevCycle.ini&&v.fecha<=prevCycle.fin&&!esNE(v)).length;
     msg+='<br><span style="color:var(--t2);font-size:12px">📋 Las '+prevVisits+' visitas del ciclo '+prevCycle.num+' ya no afectan a este ciclo. Los representantes pueden registrar nuevamente a esos médicos.</span>';
   }
   document.getElementById('cyc-status').innerHTML=msg;
@@ -5886,7 +5902,7 @@ function initDiarioMes(){
   }
   
   // === Meses calendario ===
-  const months = [...new Set(visits.filter(v=>!v.noEncontro).map(v=>v.fecha.slice(0,7)))].sort().reverse();
+  const months = [...new Set(visits.filter(v=>!esNE(v)).map(v=>v.fecha.slice(0,7)))].sort().reverse();
   const today = todayISO().slice(0,7);
   if (!months.includes(today)) months.unshift(today);
   let monthsHtml = '<optgroup label="🗓️ Meses calendario">';
@@ -5923,7 +5939,7 @@ function renderDiario(){
       days.push(dStr);
       d.setDate(d.getDate() + 1);
     }
-    visitFilterFn = function(v){ return !v.noEncontro && v.fecha >= cy.ini && v.fecha <= cy.fin; };
+    visitFilterFn = function(v){ return !esNE(v) && v.fecha >= cy.ini && v.fecha <= cy.fin; };
   } else {
     // Modo mes (formato YYYY-MM)
     const mes = sel;
@@ -5934,7 +5950,7 @@ function renderDiario(){
       return mes + '-' + d;
     });
     periodLabel = fmtMes(mes);
-    visitFilterFn = function(v){ return !v.noEncontro && v.fecha.slice(0,7) === mes; };
+    visitFilterFn = function(v){ return !esNE(v) && v.fecha.slice(0,7) === mes; };
   }
   
   const reps = getAllReps();
@@ -6063,8 +6079,8 @@ function renderDiario(){
 }
 
 function openDiarioDetail(rep, fecha){
-  const dayVisits=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&!v.noEncontro);
-  const noEnc=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&v.noEncontro);
+  const dayVisits=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&!esNE(v));
+  const noEnc=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&esNE(v));
   const d=new Date(fecha+'T12:00:00');
   const dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -6111,7 +6127,7 @@ function openDiarioDetail(rep, fecha){
 }
 
 function openDiarioFarmDetail(rep, fecha){
-  const dayFarms=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&v.tipo_visita==='farmacia'&&!v.noEncontro);
+  const dayFarms=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&v.tipo_visita==='farmacia'&&!esNE(v));
   const d=new Date(fecha+'T12:00:00');
   const dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -6163,7 +6179,7 @@ function initNESelects(){
 function renderNE(){
   const rep=document.getElementById('g-ne-rep')?.value||'';
   const filCiclo=document.getElementById('g-ne-ciclo')?.value==='ciclo';
-  let f=visits.filter(v=>v.noEncontro);
+  let f=visits.filter(v=>esNE(v));
   if(rep) f=f.filter(v=>v.rep===rep);
   if(filCiclo&&CYCLE) f=f.filter(v=>v.fecha>=CYCLE.ini&&v.fecha<=CYCLE.fin);
   f.sort((a,b)=>b.ts.localeCompare(a.ts));
@@ -6175,7 +6191,7 @@ function renderNE(){
       <th>Médico</th><th>Representante</th><th>Fecha ausencia</th><th>Comentario</th><th>Visitado después</th>
     </tr></thead>
     <tbody>${f.map(v=>{
-      const luego=visits.find(w=>!w.noEncontro&&w.rep===v.rep&&w.medico===v.medico&&w.fecha>v.fecha);
+      const luego=visits.find(w=>!esNE(w)&&w.rep===v.rep&&w.medico===v.medico&&w.fecha>v.fecha);
       return `<tr>
         <td><div style="font-size:13px;font-weight:600">${v.medico}</div><div style="font-size:11px;color:var(--t3)">${v.especialidad} · ${v.ciudad}</div></td>
         <td style="font-size:12px;color:var(--g);font-weight:500">${v.rep}</td>
@@ -6741,7 +6757,7 @@ function renderGPend(){
   // Build visited set per rep in current cycle
   const visitedByRep={};
   reps.forEach(r=>{ visitedByRep[r]=new Set(); });
-  visits.filter(v=>!v.noEncontro&&cyc&&v.fecha>=cyc.ini&&v.fecha<=cyc.fin).forEach(v=>{
+  visits.filter(v=>!esNE(v)&&cyc&&v.fecha>=cyc.ini&&v.fecha<=cyc.fin).forEach(v=>{
     if(visitedByRep[v.rep]) visitedByRep[v.rep].add(v.medico.toUpperCase());
   });
   // Build pending list
@@ -6768,7 +6784,7 @@ function renderGPend(){
       </div>
       <div style="display:none" class="mu-detail">
         ${pending.slice(0,200).map(d=>{
-          const lastV=visits.filter(v=>v.rep===rep&&!v.noEncontro&&v.medico.toUpperCase()===d.nombre.toUpperCase()).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+          const lastV=visits.filter(v=>v.rep===rep&&!esNE(v)&&v.medico.toUpperCase()===d.nombre.toUpperCase()).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
           return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--b);gap:8px">
             <div style="flex:1">
               <div style="font-size:13px;font-weight:500">${d.nombre}</div>
@@ -7006,9 +7022,24 @@ function normGpsName(s){
 function ubicHas(tipo, rep, nombreOCod){
   if (!UBIC_NORM_IDX) rebuildUbicIndex();
   if (tipo === 'medico') {
-    return !!UBIC_NORM_IDX['medico:' + (rep||'') + '||' + normGpsName(nombreOCod)];
+    var nn = normGpsName(nombreOCod);
+    return !!(UBIC_NORM_IDX['medico:' + (rep||'') + '||' + nn]
+           || UBIC_NORM_IDX['medicoAny:' + nn]);
   }
   return !!UBIC_NORM_IDX['farmacia:' + String(nombreOCod||'')];
+}
+// ¿Capturó ESTE rep la ubicación de ese médico? (no cuenta la del colega)
+function ubicHasPropia(rep, nombre){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  return !!UBIC_NORM_IDX['medico:' + (rep||'') + '||' + normGpsName(nombre)];
+}
+// Devuelve la ubicación del médico: primero la propia, si no la de un colega.
+function ubicGetMed(rep, nombre){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  var nn = normGpsName(nombre);
+  return UBIC_NORM_IDX['medico:' + (rep||'') + '||' + nn]
+      || UBIC_NORM_IDX['medicoAny:' + nn]
+      || null;
 }
 function rebuildUbicIndex(){
   UBIC_NORM_IDX = {};
@@ -7017,6 +7048,15 @@ function rebuildUbicIndex(){
     if (!u || !u.tipo) return;
     if (u.tipo === 'medico') {
       UBIC_NORM_IDX['medico:' + (u.rep||'') + '||' + normGpsName(u.nombre||'')] = u;
+      // ── Clave COMPARTIDA entre representantes ──────────────────────
+      // El consultorio del médico está donde está, sin importar quién lo
+      // marcó. Si dos reps comparten panel o uno hereda una gira, ambos
+      // deben ver la ubicación. Ante varias capturas gana la más reciente.
+      var kAny = 'medicoAny:' + normGpsName(u.nombre||'');
+      var prev = UBIC_NORM_IDX[kAny];
+      if (!prev || String(u.fecha||'') >= String(prev.fecha||'')) {
+        UBIC_NORM_IDX[kAny] = u;
+      }
     } else if (u.tipo === 'farmacia') {
       UBIC_NORM_IDX['farmacia:' + String(u.ref_id||'')] = u;
     }
@@ -7037,8 +7077,10 @@ async function loadUbicaciones(rep){
   var offset = 0;
   var maxOffset = 50000;
   while (offset < maxOffset) {
+    // Se descargan las ubicaciones de TODOS los reps a propósito: son datos
+    // compartidos (un consultorio no cambia de lugar según quién lo visite).
+    // El parámetro `rep` se conserva por compatibilidad pero ya no filtra.
     var path = '/ubicaciones?select=*&order=fecha.desc&limit=' + pageSize + '&offset=' + offset;
-    if (rep) path += '&rep=eq.' + encodeURIComponent(rep);
     var rows = await sbRequest('GET', path);
     if (!Array.isArray(rows) || rows.length === 0) break;
     all = all.concat(rows);
@@ -7149,8 +7191,7 @@ function gpsOnSelect(tipo){
   var existing = refId ? UBIC_CACHE[ubicKey(tipo,refId)] : null;
   if (!existing) {
     if (tipo === 'medico' && selDoc) {
-      var k = 'medico:' + CU + '||' + normGpsName(selDoc.nombre);
-      existing = (UBIC_NORM_IDX || {})[k] || null;
+      existing = ubicGetMed(CU, selDoc.nombre);
     } else if (tipo === 'farmacia' && selFarm) {
       var k2 = 'farmacia:' + String(selFarm.cod);
       existing = (UBIC_NORM_IDX || {})[k2] || null;
@@ -7159,9 +7200,17 @@ function gpsOnSelect(tipo){
   box.style.display = '';
   btn.disabled = false;
   if (existing){
-    st.textContent = 'Ya tiene ubicacion registrada (+/- '+(existing.precision_m||'?')+' m). Puedes recapturar para mejorarla.';
-    st.style.color = '#1A5C3A';
-    btn.textContent = '\u{1F4CD} Volver a capturar';
+    var ajena = existing.rep && typeof CU !== 'undefined' && existing.rep !== CU;
+    if (ajena){
+      st.textContent = 'Ubicacion capturada por ' + existing.rep + ' (+/- '+(existing.precision_m||'?')+' m). '
+                     + 'Te sirve para llegar. Cuando estes en el consultorio captura la tuya.';
+      st.style.color = '#2E6DA4';
+      btn.textContent = '\u{1F4CD} Capturar mi ubicacion';
+    } else {
+      st.textContent = 'Ya tiene ubicacion registrada (+/- '+(existing.precision_m||'?')+' m). Puedes recapturar para mejorarla.';
+      st.style.color = '#1A5C3A';
+      btn.textContent = '\u{1F4CD} Volver a capturar';
+    }
   } else {
     st.textContent = 'Sin capturar - pulsa el boton estando en el consultorio/farmacia.';
     st.style.color = '#5A6B60';
@@ -7191,8 +7240,13 @@ function renderGpsProgress(){
   var panel = (typeof PANEL!=='undefined' && PANEL[CU]) ? PANEL[CU] : [];
   var fkey = (typeof farmPanelKey==='function') ? farmPanelKey(CU) : CU;
   var fpanel = (typeof FARM_PANEL!=='undefined' && FARM_PANEL[fkey]) ? FARM_PANEL[fkey] : [];
-  var medCap=0, farmCap=0;
-  panel.forEach(function(d){ if(ubicHas('medico',CU,d.nombre)) medCap++; });
+  var medCap=0, farmCap=0, medHered=0;
+  // El avance mide lo que capturó ESTE rep. Las heredadas de un compañero
+  // sirven para llegar, pero no cuentan como trabajo propio.
+  panel.forEach(function(d){
+    if (ubicHasPropia(CU, d.nombre)) medCap++;
+    else if (ubicHas('medico', CU, d.nombre)) medHered++;
+  });
   fpanel.forEach(function(f){ if(ubicHas('farmacia',null,String(f.cod))) farmCap++; });
   var medTot=panel.length, farmTot=fpanel.length;
   if (medTot+farmTot===0){ if(card) card.style.display='none'; return; }
@@ -7202,6 +7256,8 @@ function renderGpsProgress(){
   el.innerHTML =
     '<div style="font-size:11px;font-weight:700;color:#1A5C3A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">\u{1F4CD} Ubicaciones GPS capturadas</div>' +
     (medTot ? gpsBar('Medicos', medCap, medTot, medPct, '#1A5C3A') : '') +
+    (medHered ? '<div style="font-size:11px;color:#2E6DA4;margin:-2px 0 6px">+ '+medHered+
+        ' con ubicacion de un compa\u00f1ero (puedes capturar la tuya)</div>' : '') +
     (farmTot ? gpsBar('Farmacias', farmCap, farmTot, farmPct, '#1565C0') : '');
 }
 
@@ -7223,28 +7279,73 @@ function renderGpsPanel(){
 
 function renderGpsCoverage(){
   var el = document.getElementById('gps-coverage'); if(!el) return;
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
   var reps = getAllReps();
   var ub = gpsAllUbic();
+
+  // Celda "capturadas / total" con color segun el avance
+  function cel(cap, tot, ancho){
+    var pct = tot ? Math.round(cap/tot*100) : 0;
+    var col = !tot ? '#9AA5A0' : pct>=80?'#1A5C3A' : pct>=40?'#C47A0A' : '#C0392B';
+    return '<td style="padding:6px 4px;white-space:nowrap' + (ancho||'') + '">' +
+      '<span style="font-weight:700;color:'+col+'">'+cap+'</span>' +
+      '<span style="color:var(--t3)">/'+tot+'</span>' +
+      (tot ? ' <span style="font-size:10.5px;color:'+col+'">('+pct+'%)</span>' : '') +
+      '</td>';
+  }
+
   var html = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
     '<thead><tr style="text-align:left;color:var(--t3)">' +
-    '<th style="padding:5px 4px">Representante</th><th style="padding:5px 4px">Medicos</th>' +
-    '<th style="padding:5px 4px">Farmacias</th><th style="padding:5px 4px">Avance</th></tr></thead><tbody>';
+    '<th style="padding:5px 4px">Representante</th>' +
+    '<th style="padding:5px 4px">CIU</th>' +
+    '<th style="padding:5px 4px">GIR</th>' +
+    '<th style="padding:5px 4px">Medicos</th>' +
+    '<th style="padding:5px 4px">Farmacias</th>' +
+    '<th style="padding:5px 4px">Avance</th></tr></thead><tbody>';
+
+  var T = {ciuC:0,ciuT:0,girC:0,girT:0,medC:0,medT:0,farC:0,farT:0};
+
   reps.forEach(function(rep){
-    var medTot = (PANEL[rep]||[]).length;
+    var panel = PANEL[rep] || [];
+    // Se recorre el panel y se agrupa por tipo (CIU / GIR), porque la fila
+    // de ubicaciones no guarda ese dato: vive en el panel del medico.
+    var ciuC=0, ciuT=0, girC=0, girT=0;
+    panel.forEach(function(d){
+      var tp = String(d.tipo||'').toUpperCase();
+      var tiene = ubicHasPropia(rep, d.nombre);
+      if (tp === 'GIR'){ girT++; if(tiene) girC++; }
+      else            { ciuT++; if(tiene) ciuC++; }
+    });
+    var medC = ciuC+girC, medT = ciuT+girT;
+
     var fk = farmPanelKey(rep);
     var farmTot = (FARM_PANEL[fk]||[]).length;
-    var medCap = ub.filter(function(u){ return u.tipo==='medico' && u.rep===rep; }).length;
     var farmCap = ub.filter(function(u){ return u.tipo==='farmacia' && u.rep===rep; }).length;
-    var tot = medTot+farmTot, cap = medCap+farmCap;
+
+    var tot = medT+farmTot, cap = medC+farmCap;
     var pct = tot? Math.round(cap/tot*100):0;
     var col = pct>=80?'#1A5C3A':pct>=40?'#C47A0A':'#C0392B';
+
+    T.ciuC+=ciuC; T.ciuT+=ciuT; T.girC+=girC; T.girT+=girT;
+    T.medC+=medC; T.medT+=medT; T.farC+=farmCap; T.farT+=farmTot;
+
     html += '<tr style="border-top:1px solid #eef2ef">' +
       '<td style="padding:6px 4px;font-weight:600">'+rep+'</td>' +
-      '<td style="padding:6px 4px">'+medCap+'/'+medTot+'</td>' +
-      '<td style="padding:6px 4px">'+farmCap+'/'+farmTot+'</td>' +
+      cel(ciuC, ciuT) + cel(girC, girT) + cel(medC, medT) + cel(farmCap, farmTot) +
       '<td style="padding:6px 4px;font-weight:700;color:'+col+'">'+pct+'%</td></tr>';
   });
-  html += '</tbody></table>';
+
+  var totAll = T.medT+T.farT, capAll = T.medC+T.farC;
+  var pctAll = totAll? Math.round(capAll/totAll*100):0;
+  html += '<tr style="border-top:2px solid #1A5C3A;background:#F6FAF8">' +
+    '<td style="padding:7px 4px;font-weight:800">TOTAL</td>' +
+    cel(T.ciuC,T.ciuT) + cel(T.girC,T.girT) + cel(T.medC,T.medT) + cel(T.farC,T.farT) +
+    '<td style="padding:7px 4px;font-weight:800;color:#1A5C3A">'+pctAll+'%</td></tr>';
+
+  html += '</tbody></table>' +
+    '<p style="font-size:11px;color:var(--t3);margin-top:7px">' +
+    'CIU = panel de ciudad · GIR = panel de gira. Se cuentan las ubicaciones ' +
+    'capturadas por cada representante; las heredadas de un compa\u00f1ero no suman aqui.</p>';
   el.innerHTML = html;
 }
 
