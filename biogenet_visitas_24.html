@@ -1246,7 +1246,11 @@ textarea{resize:none;height:88px;line-height:1.5}
             <select id="gps-f-ciudad" onchange="renderGpsList()" style="flex:1;min-width:120px;padding:8px;border-radius:8px;border:1px solid #cbd5d0;font-family:var(--f);font-size:13px"><option value="">Todas las ciudades</option></select>
           </div>
           <input type="text" id="gps-f-q" oninput="renderGpsList()" placeholder="Buscar por nombre..." style="width:100%;padding:8px;border-radius:8px;border:1px solid #cbd5d0;font-family:var(--f);font-size:13px;margin-bottom:.6rem">
-          <div id="gps-sel-info" style="font-size:12px;color:#1A5C3A;font-weight:700;margin-bottom:.5rem">0 seleccionados</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem;flex-wrap:wrap">
+            <div id="gps-sel-info" style="font-size:12px;color:#1A5C3A;font-weight:700">0 seleccionados</div>
+            <button id="gps-sel-todos" onclick="gpsSelVisibles()" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:#1A5C3A;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">Seleccionar visibles</button>
+            <button id="gps-sel-limpiar" onclick="gpsLimpiarSel()" style="padding:4px 10px;border-radius:6px;border:1px solid #E0B4B4;background:#fff;color:#C0392B;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">✕ Limpiar selección</button>
+          </div>
           <div style="display:flex;gap:8px;margin-bottom:.7rem">
             <button onclick="gpsGenerarRuta()" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--g);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--f)">&#128506;&#65039; Generar ruta</button>
             <button onclick="gpsExportar()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--g);background:#fff;color:var(--g);font-weight:700;font-size:13px;cursor:pointer;font-family:var(--f)">&#11015;&#65039; Exportar Excel</button>
@@ -7593,10 +7597,42 @@ function gpsToggle(idx){
   updateGpsSelInfo();
 }
 
+// Borra la seleccion completa y destilda los checkboxes visibles.
+function gpsLimpiarSel(){
+  GPS_SEL = {};
+  if (typeof renderGpsList === 'function') renderGpsList();
+  else updateGpsSelInfo();
+  if (typeof showToast === 'function') showToast('Selecci\u00f3n limpiada');
+}
+
+// Marca los que esten pasando el filtro actual. Google Maps admite
+// 10 puntos por ruta, asi que no se agregan mas de 10.
+function gpsSelVisibles(){
+  var lista = (typeof gpsFilteredList === 'function') ? gpsFilteredList() : (GPS_LIST_CACHE||[]);
+  var agregados = 0;
+  for (var i=0; i<lista.length; i++){
+    if (Object.keys(GPS_SEL).length >= 10) break;
+    var u = lista[i], k = ubicKey(u.tipo, u.ref_id);
+    if (!GPS_SEL[k]){ GPS_SEL[k] = u; agregados++; }
+  }
+  if (typeof renderGpsList === 'function') renderGpsList();
+  if (typeof showToast === 'function'){
+    showToast(agregados
+      ? ('+' + agregados + ' agregados' + (lista.length > 10 ? ' (maximo 10 por ruta)' : ''))
+      : 'Nada nuevo que agregar');
+  }
+}
+
 function updateGpsSelInfo(){
   var n = Object.keys(GPS_SEL).length;
   var el = document.getElementById('gps-sel-info');
-  if (el) el.textContent = n + ' seleccionado' + (n===1?'':'s');
+  if (el){
+    // Avisar del tope de Google Maps antes de que falle al generar la ruta
+    el.textContent = n + ' seleccionado' + (n===1?'':'s') + (n>10 ? ' \u2014 m\u00e1ximo 10 por ruta' : '');
+    el.style.color = n>10 ? '#C0392B' : '#1A5C3A';
+  }
+  var b = document.getElementById('gps-sel-limpiar');
+  if (b) b.style.display = n ? '' : 'none';
 }
 
 function gpsDist(a,b){ var dx=a.lat-b.lat, dy=a.lng-b.lng; return Math.sqrt(dx*dx+dy*dy); }
