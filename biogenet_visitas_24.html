@@ -784,7 +784,10 @@ textarea{resize:none;height:88px;line-height:1.5}
       <div class="card">
         <div class="ctitle">Seguimiento diario de visitas por representante</div>
         <p style="font-size:12px;color:var(--t3);margin-bottom:.75rem">Solo contactos efectivos. Elige el período: ciclo de trabajo o mes calendario.</p>
-        <select id="g-diario-mes" onchange="renderDiario()" style="margin-bottom:0;min-width:280px"></select>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="g-diario-mes" onchange="renderDiario()" style="margin-bottom:0;min-width:280px"></select>
+          <select id="g-diario-rep" onchange="renderDiario()" style="margin-bottom:0;min-width:220px"><option value="">Todos los representantes</option></select>
+        </div>
       </div>
       <div style="overflow-x:auto;margin-bottom:.9rem">
         <div id="g-diario-table"></div>
@@ -6098,6 +6101,15 @@ function initDiarioMes(){
   monthsHtml += '</optgroup>';
   
   sel.innerHTML = cyclesHtml + monthsHtml;
+
+  // Filtro de representante: conserva la seleccion si ya habia una
+  var rsel = document.getElementById('g-diario-rep');
+  if (rsel){
+    var prev = rsel.value;
+    rsel.innerHTML = '<option value="">Todos los representantes</option>' +
+      getAllReps().map(function(r){ return '<option value="'+r+'">'+r+'</option>'; }).join('');
+    rsel.value = prev;
+  }
 }
 function renderDiario(){
   const sel = document.getElementById('g-diario-mes')?.value || todayISO().slice(0,7);
@@ -6139,8 +6151,19 @@ function renderDiario(){
     visitFilterFn = function(v){ return !esNE(v) && v.fecha.slice(0,7) === mes; };
   }
   
-  const reps = getAllReps();
-  const META_MED=10, META_FARM=5;
+  const repFil = document.getElementById('g-diario-rep')?.value || '';
+  const reps = getAllReps().filter(function(r){ return !repFil || r === repFil; });
+  // Meta diaria distinta segun el tipo de jornada
+  const META_CIU=12, META_GIR=14, META_FARM=5;
+
+  const hoyISO = todayISO();
+  const esHabil = function(d){
+    if (d > hoyISO) return false;                    // solo dias transcurridos
+    var w = new Date(d+'T12:00:00').getDay();
+    return w >= 1 && w <= 5;                          // lunes a viernes
+  };
+  const diasHabiles = days.filter(esHabil).length;
+  const esGir = function(v){ return String(v.tipo_panel||'').toUpperCase().indexOf('GIR') === 0; };
 
   // Build matrices: rep -> day -> visits
   const matMed={}, matFarm={};
@@ -6179,7 +6202,15 @@ function renderDiario(){
     }
     th+=`<th colspan="2" style="min-width:${colW}px;text-align:center;font-size:10px;padding:4px 0;${isToday?'color:var(--g);font-weight:800':''}${isWeekend?';opacity:.35':''}">${mLabel}${dn}</th>`;
   });
-  th+=`<th colspan="2" style="text-align:center;min-width:80px;padding:8px 4px;font-size:11px" rowspan="2">Total<br><span style="font-weight:400;color:var(--t3)">Med / Farm</span></th></tr>`;
+  const grpTh = function(tit,sub,col){
+    return '<th colspan="3" style="text-align:center;min-width:132px;padding:6px 4px;font-size:10.5px;'
+      + 'border-left:2px solid var(--b);color:'+col+'">'+tit
+      + '<br><span style="font-weight:400;color:var(--t3);font-size:9px">'+sub+'</span></th>';
+  };
+  th += grpTh('MÉDICOS CIUDAD','meta '+META_CIU+'/día','#2E7D32')
+      + grpTh('MÉDICOS GIRA','meta '+META_GIR+'/día','#00695C')
+      + grpTh('FARMACIAS','meta '+META_FARM+'/día','#1565C0')
+      + '</tr>';
   // Sub-header
   th+=`<tr>`;
   days.forEach(d=>{
@@ -6188,13 +6219,44 @@ function renderDiario(){
     th+=`<th style="font-size:9px;font-weight:600;color:#2E7D32;padding:3px 2px;border-top:1px solid #C8E6C9;${isWeekend?'opacity:.35':''}">M</th>`;
     th+=`<th style="font-size:9px;font-weight:600;color:#1565C0;padding:3px 2px;border-top:1px solid #BBDEFB;${isWeekend?'opacity:.35':''}">F</th>`;
   });
+  const subCols = ['Real','Meta','Falta'].map(function(x,i){
+    return '<th style="font-size:9px;font-weight:600;color:var(--t3);padding:3px 4px'
+      + (i===0?';border-left:2px solid var(--b)':'') + '">'+x+'</th>';
+  }).join('');
+  th += subCols + subCols + subCols;
   th+=`</tr>`;
+
+  // Clasifica cada jornada como CIUDAD o GIRA segun el tipo de los medicos
+  // visitados ese dia. Un dia sin visitas se asume de ciudad, que es la
+  // modalidad dominante del panel.
+  const tipoDia = {};
+  reps.forEach(function(rep){
+    tipoDia[rep] = {};
+    days.forEach(function(d){
+      var arr = matMed[rep][d] || [];
+      if (!arr.length){ tipoDia[rep][d] = 'CIU'; return; }
+      var g = arr.filter(esGir).length;
+      tipoDia[rep][d] = (g > arr.length - g) ? 'GIR' : 'CIU';
+    });
+  });
+  const metaDelDia = function(rep,d){ return tipoDia[rep][d]==='GIR' ? META_GIR : META_CIU; };
 
   // Body
   let tbody='';
   reps.forEach(rep=>{
     const totMed=Object.values(matMed[rep]).reduce((a,arr)=>a+arr.length,0);
     const totFarm=Object.values(matFarm[rep]).reduce((a,arr)=>a+arr.length,0);
+
+    // Reales y metas separados por modalidad
+    let realCiu=0, realGir=0, habCiu=0, habGir=0;
+    days.forEach(function(d){
+      (matMed[rep][d]||[]).forEach(function(v){ esGir(v) ? realGir++ : realCiu++; });
+      if (!esHabil(d)) return;
+      tipoDia[rep][d]==='GIR' ? habGir++ : habCiu++;
+    });
+    const metaCiu  = habCiu*META_CIU;
+    const metaGir  = habGir*META_GIR;
+    const metaFarm = (habCiu+habGir)*META_FARM;
     const safeRep=rep.replace(/'/g,"\\'");
     let row=`<tr><td style="position:sticky;left:0;background:var(--s);z-index:1;font-size:12px;font-weight:600;white-space:nowrap;padding:8px 10px;border-bottom:2px solid var(--b)">${rep}</td>`;
 
@@ -6206,28 +6268,28 @@ function renderDiario(){
       const isToday=d===today;
       const todayOutline=isToday?'outline:2px solid var(--g);outline-offset:-2px;':'';
 
-      // Médico cell — color scale by target (meta=10)
-      // ≤7: red, 8-9: orange, 10: green, >10: yellow
+      // Médico cell — la meta del dia depende de si fue ciudad (12) o gira (14).
+      // Bandas: 3 o mas por debajo rojo, 1-2 por debajo naranja, meta o mas verde.
+      // Superar la meta se ve igual que cumplirla, para no competir con el naranja.
+      const metaHoy = metaDelDia(rep,d);
       let medBg,medCol;
       if(med===0){ medBg=isWeekend?'#F5F3EF':'var(--s)'; medCol=isWeekend?'var(--b2)':'var(--t3)'; }
-      else if(med<=7){ medBg='#C62828'; medCol='#fff'; }
-      else if(med<=9){ medBg='#E65100'; medCol='#fff'; }
-      else if(med===10){ medBg='#2E7D32'; medCol='#fff'; }
-      else { medBg='#F9A825'; medCol='#333'; }
+      else if(med<=metaHoy-3){ medBg='#C62828'; medCol='#fff'; }
+      else if(med<metaHoy){ medBg='#E65100'; medCol='#fff'; }
+      else { medBg='#2E7D32'; medCol='#fff'; }
       row+=`<td style="text-align:center;font-size:12px;font-weight:${med>0?'700':'400'};background:${medBg};color:${medCol};padding:0;border-bottom:2px solid var(--b);border-right:1px dashed rgba(0,0,0,.08);${todayOutline}">
         ${med>0
-          ?`<button onclick="openDiarioDetail('${safeRep}','${d}')" style="width:100%;height:100%;min-height:32px;background:none;border:none;cursor:pointer;color:inherit;font-weight:700;font-size:12px;font-family:var(--f);padding:4px 0">${med}${med>=META_MED?'<sup style="font-size:9px">✓</sup>':''}</button>`
+          ?`<button onclick="openDiarioDetail('${safeRep}','${d}')" style="width:100%;height:100%;min-height:32px;background:none;border:none;cursor:pointer;color:inherit;font-weight:700;font-size:12px;font-family:var(--f);padding:4px 0">${med}${med>=metaHoy?'<sup style="font-size:9px">✓</sup>':''}</button>`
           :`<span style="display:block;padding:4px 0"></span>`}
       </td>`;
 
-      // Farmacia cell — same color scale (meta=5)
-      // ≤3: red, 4: orange, 5: green, >5: yellow
+      // Farmacia cell — misma escala (meta=5)
+      // ≤3: rojo, 4: naranja, 5 o mas: azul
       let farmBg,farmCol;
       if(farm===0){ farmBg=isWeekend?'#F5F3EF':'var(--s)'; farmCol=isWeekend?'var(--b2)':'var(--t3)'; }
       else if(farm<=3){ farmBg='#B71C1C'; farmCol='#fff'; }
       else if(farm===4){ farmBg='#BF360C'; farmCol='#fff'; }
-      else if(farm===5){ farmBg='#1565C0'; farmCol='#fff'; }
-      else { farmBg='#F57F17'; farmCol='#333'; }
+      else { farmBg='#1565C0'; farmCol='#fff'; }   // 5 o mas: meta cumplida
       row+=`<td style="text-align:center;font-size:12px;font-weight:${farm>0?'700':'400'};background:${farmBg};color:${farmCol};padding:0;border-bottom:2px solid var(--b);border-right:1px solid var(--b);${todayOutline}">
         ${farm>0
           ?`<button onclick="openDiarioFarmDetail('${safeRep}','${d}')" style="width:100%;height:100%;min-height:32px;background:none;border:none;cursor:pointer;color:inherit;font-weight:700;font-size:12px;font-family:var(--f);padding:4px 0">${farm}${farm>=META_FARM?'<sup style="font-size:9px">✓</sup>':''}</button>`
@@ -6235,27 +6297,49 @@ function renderDiario(){
       </td>`;
     });
 
-    row+=`<td style="text-align:center;font-size:13px;font-weight:700;color:#2E7D32;padding:6px 4px;border-bottom:2px solid var(--b);border-right:1px dashed rgba(0,0,0,.08)">${totMed}</td>`;
-    row+=`<td style="text-align:center;font-size:13px;font-weight:700;color:#1565C0;padding:6px 4px;border-bottom:2px solid var(--b)">${totFarm}</td></tr>`;
+    // ── Totales por modalidad: real, meta acumulada y faltante ──────────
+    const bloque = function(real, meta, colOk){
+      var falta = Math.max(0, meta - real);
+      var pc = meta ? Math.round(real/meta*100) : null;
+      var colReal = pc===null ? 'var(--t3)' : pc>=100 ? colOk : pc>=80 ? '#E65100' : '#C62828';
+      return '<td style="text-align:center;font-size:13px;font-weight:700;color:'+colReal+';padding:6px 4px;'
+           +   'border-bottom:2px solid var(--b);border-left:2px solid var(--b)"'
+           +   (pc===null?'':' title="'+pc+'% de la meta"')+'>'+real+'</td>'
+           + '<td style="text-align:center;font-size:12px;color:var(--t2);background:#FAFAF8;padding:6px 4px;'
+           +   'border-bottom:2px solid var(--b)">'+meta+'</td>'
+           + '<td style="text-align:center;font-size:13px;font-weight:700;padding:6px 4px;'
+           +   'border-bottom:2px solid var(--b);color:'+(falta>0?'#C62828':'#2E7D32')+'">'
+           +   (falta>0?falta:'\u2713')+'</td>';
+    };
+    row += bloque(realCiu,  metaCiu,  '#2E7D32')
+         + bloque(realGir,  metaGir,  '#00695C')
+         + bloque(totFarm,  metaFarm, '#1565C0')
+         + '</tr>';
     tbody+=row;
   });
 
   // Legend
   const legend=`<div style="display:flex;gap:12px;align-items:center;padding:8px 4px;font-size:11px;color:var(--t2);flex-wrap:wrap">
-    <b>Médicos (meta ${META_MED}/día):</b>
-    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#C62828;border-radius:2px"></span>≤7</span>
-    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#E65100;border-radius:2px"></span>8-9</span>
-    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#2E7D32;border-radius:2px"></span>10 ✓</span>
-    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#F9A825;border-radius:2px"></span>>10</span>
+    <b>Médicos — ciudad ${META_CIU}/día · gira ${META_GIR}/día:</b>
+    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#C62828;border-radius:2px"></span>3 o más bajo la meta</span>
+    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#E65100;border-radius:2px"></span>1-2 bajo la meta</span>
+    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#2E7D32;border-radius:2px"></span>meta o más ✓</span>
     <span style="margin-left:8px"><b>Farmacias (meta ${META_FARM}/día):</b></span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#B71C1C;border-radius:2px"></span>≤3</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#BF360C;border-radius:2px"></span>4</span>
-    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#1565C0;border-radius:2px"></span>5 ✓</span>
-    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#F57F17;border-radius:2px"></span>>5</span>
+    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#1565C0;border-radius:2px"></span>5 o más ✓</span>
   </div>`;
 
   // Mostrar título del período
-  const titulo = '<div style="margin-bottom:.75rem;padding:.5rem .75rem;background:var(--gp);border-left:3px solid var(--g);border-radius:var(--rads);font-size:13px"><b>Período:</b> ' + periodLabel + ' · ' + days.length + ' días</div>';
+  const titulo = '<div style="margin-bottom:.75rem;padding:.5rem .75rem;background:var(--gp);border-left:3px solid var(--g);border-radius:var(--rads);font-size:13px">' +
+    '<b>Período:</b> ' + periodLabel + ' · ' + days.length + ' días' +
+    (repFil ? ' · <b>' + repFil + '</b>' : '') +
+    '<div style="font-size:11.5px;color:var(--t2);margin-top:3px">' +
+      '<b>' + diasHabiles + '</b> días hábiles transcurridos (lun-vie, hasta hoy). ' +
+      'Cada jornada se clasifica como <b>ciudad</b> (' + META_CIU + ' médicos) o <b>gira</b> (' + META_GIR +
+      ') según el tipo de los médicos visitados ese día; sin visitas se asume ciudad. ' +
+      'Farmacias: ' + META_FARM + ' por día.' +
+    '</div></div>';
   document.getElementById('g-diario-table').innerHTML=titulo+legend+`
     <div style="overflow-x:auto">
     <table style="border-collapse:collapse;width:100%;font-family:var(--f)">
@@ -6264,9 +6348,80 @@ function renderDiario(){
     </table></div>`;
 }
 
+// El detalle diario puede abrirse sin haber pasado por "Mis paneles" ni por
+// la pestana GPS, que son las que cargaban las ubicaciones. Sin ellas todo
+// salia "Sin ubicacion". Esto las trae una sola vez por sesion y, cuando
+// llegan, vuelve a pintar el modal que este abierto.
+var _ubicCargadas = false, _ubicCargando = false;
+function asegurarUbicaciones(despues){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  if (_ubicCargadas || _ubicCargando) return;
+  _ubicCargando = true;
+  loadUbicaciones(null).then(function(){
+    _ubicCargadas = true; _ubicCargando = false;
+    rebuildUbicIndex();
+    if (typeof despues === 'function') despues();
+  }).catch(function(){ _ubicCargando = false; });
+}
+
+// Ubicacion de una farmacia por codigo (las farmacias ya se comparten entre reps)
+function ubicGetFarm(cod){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  var c = String(cod==null?'':cod).trim();
+  if (!c) return null;
+  return UBIC_NORM_IDX['farmacia:' + c]
+      || UBIC_NORM_IDX['farmacia:' + c.toUpperCase()]
+      || UBIC_NORM_IDX['farmacia:' + c.replace(/^0+/,'')]   // por si viene con ceros a la izquierda
+      || null;
+}
+
+// Boton para abrir la ubicacion en Google Maps desde el detalle diario.
+// Si nadie capturo el GPS todavia, muestra un chip apagado en vez de un
+// enlace roto, para que se note que falta capturarla.
+function btnUbicMaps(u){
+  if (!u || !u.lat || !u.lng){
+    return '<span title="Nadie ha capturado el GPS de este punto" style="display:inline-block;padding:4px 9px;'
+         + 'border-radius:7px;background:#F2F2F2;color:#999;font-size:10.5px;font-weight:600;white-space:nowrap">Sin ubicación</span>';
+  }
+  var url = 'https://www.google.com/maps/search/?api=1&query=' + u.lat + ',' + u.lng;
+  return '<a href="'+url+'" target="_blank" rel="noopener" title="Abrir en Google Maps" '
+       + 'style="display:inline-block;padding:4px 9px;border-radius:7px;background:#1A5C3A;color:#fff;'
+       + 'font-size:10.5px;font-weight:700;text-decoration:none;white-space:nowrap">\uD83D\uDCCD Ver ubicación</a>';
+}
+
+// Fila de farmacia. Definida una sola vez para que el detalle de medicos
+// y el de farmacias muestren exactamente la misma informacion.
+function diarioFarmRow(v){
+  return `<div style="padding:10px 0;border-bottom:1px solid var(--b)">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">
+      <div>
+        <div style="font-size:14px;font-weight:600">🏪 ${v.farmacia||''}</div>
+        <div style="font-size:11px;color:var(--t2)">
+          <span style="background:#E3F0FF;color:#1565C0;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:4px">${v.cadena||''}</span>
+          ${v.ciudad||''}${v.zona?' · '+v.zona:''}
+        </div>
+      </div>
+      <div style="text-align:right;white-space:nowrap">
+        <div style="font-size:11px;color:var(--t3)">${fmtHoraEcuador(v.ts)}</div>
+        <div style="margin-top:4px">${btnUbicMaps(ubicGetFarm(v.farmacia_cod))}</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">
+      <span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:10px;font-size:10px;border:1px solid #C8E6C9">${v.resultado||'Contacto efectivo'}</span>
+      ${v.objetivo?`<span style="background:#FFF8E1;color:#E65100;padding:2px 8px;border-radius:10px;font-size:10px;border:1px solid #FFCC80">${v.objetivo}</span>`:''}
+    </div>
+    ${v.comentario?`<div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.5;padding:6px 8px;background:var(--s2);border-radius:6px;border-left:3px solid #1565C0">💬 ${v.comentario}</div>`:''}
+  </div>`;
+}
 function openDiarioDetail(rep, fecha){
-  const dayVisits=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&!esNE(v));
-  const noEnc=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&esNE(v));
+  asegurarUbicaciones(function(){ openDiarioDetail(rep, fecha); });
+  // Separar por tipo: una visita a farmacia no tiene medico ni especialidad,
+  // asi que pintarla con el formato de medico dejaba la fila a medias.
+  const delDia   = visits.filter(v=>v.rep===rep&&v.fecha===fecha);
+  const dayVisits= delDia.filter(v=>!esNE(v) && v.tipo_visita!=='farmacia');
+  const dayFarms = delDia.filter(v=>!esNE(v) && v.tipo_visita==='farmacia');
+  const noEnc     = delDia.filter(v=>esNE(v) && v.tipo_visita!=='farmacia');
+  const noEncFarm = delDia.filter(v=>esNE(v) && v.tipo_visita==='farmacia');
   const d=new Date(fecha+'T12:00:00');
   const dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -6280,18 +6435,36 @@ function openDiarioDetail(rep, fecha){
           <div style="font-size:14px;font-weight:600">${v.medico}</div>
           <div style="font-size:11px;color:var(--t2)">${v.especialidad} · ${v.ciudad} · <span class="tag ${v.tipo_panel==='CIU'?'tb':'ta'}" style="font-size:10px;padding:2px 6px">${v.tipo_panel}</span></div>
         </div>
-        <div style="font-size:11px;color:var(--t3);white-space:nowrap">${fmtHoraEcuador(v.ts)}</div>
+        <div style="text-align:right;white-space:nowrap">
+          <div style="font-size:11px;color:var(--t3)">${fmtHoraEcuador(v.ts)}</div>
+          <div style="margin-top:4px">${btnUbicMaps(ubicGetMed(v.rep, v.medico))}</div>
+        </div>
       </div>
       ${prods||mats?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${prods}${mats}</div>`:''}
       ${v.comentario?`<div style="font-size:12px;color:var(--t2);margin-top:5px;line-height:1.5;padding:6px 8px;background:var(--s2);border-radius:6px;border-left:3px solid var(--g)">💬 ${v.comentario}</div>`:''}
     </div>`;
   }
-  const neSection=noEnc.length?`
+  const neSection=(noEnc.length||noEncFarm.length)?`
     <div style="margin-top:1rem">
-      <div style="font-size:11px;font-weight:700;color:var(--am);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">⚠️ No encontrados (${noEnc.length})</div>
+      <div style="font-size:11px;font-weight:700;color:var(--am);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">⚠️ No encontrados (${noEnc.length+noEncFarm.length})</div>
       ${noEnc.map(v=>`<div style="padding:8px 0;border-bottom:1px solid var(--b)">
-        <div style="font-size:13px;font-weight:500">${v.medico}</div>
-        <div style="font-size:11px;color:var(--t3)">${v.especialidad} · ${v.ciudad}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-size:13px;font-weight:500">👨‍⚕️ ${v.medico||''}</div>
+            <div style="font-size:11px;color:var(--t3)">${[v.especialidad,v.ciudad].filter(Boolean).join(' · ')}</div>
+          </div>
+          ${btnUbicMaps(ubicGetMed(v.rep, v.medico))}
+        </div>
+        ${v.comentario?`<div style="font-size:12px;color:var(--t2);margin-top:3px">${v.comentario}</div>`:''}
+      </div>`).join('')}
+      ${noEncFarm.map(v=>`<div style="padding:8px 0;border-bottom:1px solid var(--b)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-size:13px;font-weight:500">🏪 ${v.farmacia||''}</div>
+            <div style="font-size:11px;color:var(--t3)">${[v.cadena,v.ciudad,v.zona].filter(Boolean).join(' · ')}</div>
+          </div>
+          ${btnUbicMaps(ubicGetFarm(v.farmacia_cod))}
+        </div>
         ${v.comentario?`<div style="font-size:12px;color:var(--t2);margin-top:3px">${v.comentario}</div>`:''}
       </div>`).join('')}
     </div>`:'';
@@ -6301,43 +6474,36 @@ function openDiarioDetail(rep, fecha){
         <div class="mtitle">${rep}</div>
         <div class="msub">${fechaLabel}</div>
       </div>
-      <div style="text-align:center;background:var(--gl);border-radius:var(--rads);padding:8px 14px;flex-shrink:0">
-        <div style="font-size:24px;font-weight:700;color:var(--g);letter-spacing:-1px">${dayVisits.length}</div>
-        <div style="font-size:10px;color:var(--gm);text-transform:uppercase;letter-spacing:.04em">contactos</div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <div style="text-align:center;background:var(--gl);border-radius:var(--rads);padding:8px 14px">
+          <div style="font-size:24px;font-weight:700;color:var(--g);letter-spacing:-1px">${dayVisits.length}</div>
+          <div style="font-size:10px;color:var(--gm);text-transform:uppercase;letter-spacing:.04em">médicos</div>
+        </div>
+        <div style="text-align:center;background:#E3F0FF;border-radius:var(--rads);padding:8px 14px">
+          <div style="font-size:24px;font-weight:700;color:#1565C0;letter-spacing:-1px">${dayFarms.length}</div>
+          <div style="font-size:10px;color:#1565C0;opacity:.7;text-transform:uppercase;letter-spacing:.04em">farmacias</div>
+        </div>
       </div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">✓ Visitados (${dayVisits.length})</div>
+    <div style="font-size:11px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">👨‍⚕️ Médicos visitados (${dayVisits.length})</div>
     ${dayVisits.length?dayVisits.map(visitRow).join(''):'<p style="font-size:13px;color:var(--t3)">Sin contactos efectivos este día.</p>'}
+    ${dayFarms.length?`
+      <div style="font-size:11px;font-weight:700;color:#1565C0;text-transform:uppercase;letter-spacing:.06em;margin:1rem 0 .5rem">🏪 Farmacias visitadas (${dayFarms.length})</div>
+      ${dayFarms.map(diarioFarmRow).join('')}`:''}
     ${neSection}`;
   document.getElementById('aoverlay').classList.add('open');
 }
 
 function openDiarioFarmDetail(rep, fecha){
+  asegurarUbicaciones(function(){ openDiarioFarmDetail(rep, fecha); });
   const dayFarms=visits.filter(v=>v.rep===rep&&v.fecha===fecha&&v.tipo_visita==='farmacia'&&!esNE(v));
   const d=new Date(fecha+'T12:00:00');
   const dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const fechaLabel=`${dias[d.getDay()]} ${d.getDate()} de ${meses[d.getMonth()]}`;
 
-  function farmRow(v){
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--b)">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">
-        <div>
-          <div style="font-size:14px;font-weight:600">🏪 ${v.farmacia||''}</div>
-          <div style="font-size:11px;color:var(--t2)">
-            <span style="background:#E3F0FF;color:#1565C0;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:4px">${v.cadena||''}</span>
-            ${v.ciudad||''}${v.zona?' · '+v.zona:''}
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--t3);white-space:nowrap">${fmtHoraEcuador(v.ts)}</div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">
-        <span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:10px;font-size:10px;border:1px solid #C8E6C9">${v.resultado||'Contacto efectivo'}</span>
-        ${v.objetivo?`<span style="background:#FFF8E1;color:#E65100;padding:2px 8px;border-radius:10px;font-size:10px;border:1px solid #FFCC80">${v.objetivo}</span>`:''}
-      </div>
-      ${v.comentario?`<div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.5;padding:6px 8px;background:var(--s2);border-radius:6px;border-left:3px solid #1565C0">💬 ${v.comentario}</div>`:''}
-    </div>`;
-  }
+  const farmRow = diarioFarmRow;
+
 
   document.getElementById('mcontent').innerHTML=`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;gap:8px">
