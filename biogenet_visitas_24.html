@@ -3909,7 +3909,16 @@ function renderMarketingList(){
     var totalCamp = (MARKETING_ASIGNACIONES||[]).filter(function(a){ return a.campana_id===camp.id; }).length;
     var cap = camp.cantidad_total ? (' · <b>Cupo total: '+camp.cantidad_total+'</b> · Asignados '+totalCamp) : '';
     var bulkBtn = sel>0 ? '<div style="margin-top:8px"><button onclick="mktEntregarTodos()" style="width:100%;padding:10px;border-radius:8px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--f)">✓ Marcar todos los seleccionados ('+sel+') como entregados</button><div style="font-size:10.5px;color:var(--t3);margin-top:4px;text-align:center">Útil para cenas, congresos u otros eventos grupales</div></div>' : '';
-    info.innerHTML = '<span style="color:#8B5CF6"><b>'+sel+'</b></span> seleccionados · <span style="color:#1A5C3A"><b>'+ent+'</b></span> entregados · '+disp+' disponibles · '+tomOtro+' tomados por otros'+cap+bulkBtn;
+    // "Seleccionados" es TODO lo que el rep tomo de la campana; los entregados
+    // son un subconjunto, no una categoria aparte. Asi, 15 y 10 se lee de una
+    // como "tomo 15, entrego 10, le faltan 5".
+    var selTotal = sel + ent;
+    var falta = sel;
+    info.innerHTML = '<span style="color:#8B5CF6"><b>'+selTotal+'</b></span> seleccionados · '
+      + '<span style="color:#1A5C3A"><b>'+ent+'</b></span> entregados'
+      + (falta>0 ? ' · <span style="color:#C47A0A"><b>'+falta+'</b> por entregar</span>'
+                 : (selTotal>0 ? ' · <span style="color:#1A5C3A">✓ todo entregado</span>' : ''))
+      + ' · '+disp+' disponibles · '+tomOtro+' tomados por otros'+cap+bulkBtn;
   }
   if (!panelMed.length){ el.innerHTML = '<div class="empty"><p>Sin médicos en tu panel.</p></div>'; return; }
   el.innerHTML = '<div class="card" style="padding:0;overflow:hidden">'
@@ -3960,7 +3969,12 @@ function renderGerMarketing(){
     var byRep = {};
     asigs.forEach(function(a){ if (!byRep[a.rep]) byRep[a.rep]={sel:0,ent:0}; if (a.estado==='seleccionado') byRep[a.rep].sel++; else if (a.estado==='entregado') byRep[a.rep].ent++; });
     var repsHtml = Object.keys(byRep).sort().map(function(r){
-      return '<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#F8FAFC;border-radius:5px;margin-bottom:3px;font-size:11.5px"><span><b>'+esc_(r)+'</b></span><span><span style="color:#8B5CF6">'+byRep[r].sel+' sel</span> · <span style="color:#1A5C3A">'+byRep[r].ent+' ent</span></span></div>';
+      var rt = byRep[r].sel + byRep[r].ent, rf = byRep[r].sel;
+      return '<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#F8FAFC;border-radius:5px;margin-bottom:3px;font-size:11.5px">'
+        + '<span><b>'+esc_(r)+'</b></span>'
+        + '<span><span style="color:#8B5CF6">'+rt+' sel</span> · <span style="color:#1A5C3A">'+byRep[r].ent+' ent</span>'
+        + (rf>0 ? ' · <span style="color:#C47A0A">faltan '+rf+'</span>' : ' <span style="color:#1A5C3A">✓</span>')
+        + '</span></div>';
     }).join('') || '<p style="font-size:11.5px;color:var(--t3);padding:.4rem 0">Sin asignaciones aún.</p>';
     var estCol = c.estado==='activa' ? '#1A5C3A' : '#666';
     return '<div class="card" style="padding:12px 14px;margin-bottom:8px;border-left:4px solid '+estCol+'">'
@@ -3971,9 +3985,9 @@ function renderGerMarketing(){
       +   '<span style="font-size:10.5px;color:#fff;background:'+estCol+';padding:3px 8px;border-radius:5px;font-weight:700">'+c.estado.toUpperCase()+'</span>'
       + '</div>'
       + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:8px">'
-      +   '<div style="text-align:center;padding:8px;background:#F3E8FF;border-radius:6px"><div style="font-size:20px;font-weight:700;color:#8B5CF6">'+sel+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Seleccionados</div></div>'
+      +   '<div style="text-align:center;padding:8px;background:#F3E8FF;border-radius:6px"><div style="font-size:20px;font-weight:700;color:#8B5CF6">'+(sel+ent)+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Seleccionados</div></div>'
       +   '<div style="text-align:center;padding:8px;background:#DCFCE7;border-radius:6px"><div style="font-size:20px;font-weight:700;color:#1A5C3A">'+ent+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Entregados</div></div>'
-      +   '<div style="text-align:center;padding:8px;background:#F1F5F9;border-radius:6px"><div style="font-size:20px;font-weight:700;color:var(--t1)">'+(sel+ent)+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Total asignados</div></div>'
+      +   '<div style="text-align:center;padding:8px;background:'+(sel>0?'#FEF3C7':'#F1F5F9')+';border-radius:6px"><div style="font-size:20px;font-weight:700;color:'+(sel>0?'#C47A0A':'#1A5C3A')+'">'+(sel>0?sel:'✓')+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Por entregar</div></div>'
       + '</div>'
       + '<div style="margin-bottom:8px">'+repsHtml+'</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
@@ -6272,12 +6286,17 @@ function renderDiario(){
       // Bandas: 3 o mas por debajo rojo, 1-2 por debajo naranja, meta o mas verde.
       // Superar la meta se ve igual que cumplirla, para no competir con el naranja.
       const metaHoy = metaDelDia(rep,d);
+      const esGira  = tipoDia[rep][d]==='GIR';
+      // Las jornadas de gira se marcan: piden 14 en vez de 12, y sin una
+      // senal visible el naranja de un dia con 13 parecia un error.
+      const marcaGira = esGira ? 'box-shadow:inset 3px 0 0 #00695C;' : '';
+      const tipTexto  = (esGira?'Gira':'Ciudad') + ' · meta ' + metaHoy + ' · ' + med + ' visitado' + (med===1?'':'s');
       let medBg,medCol;
       if(med===0){ medBg=isWeekend?'#F5F3EF':'var(--s)'; medCol=isWeekend?'var(--b2)':'var(--t3)'; }
       else if(med<=metaHoy-3){ medBg='#C62828'; medCol='#fff'; }
       else if(med<metaHoy){ medBg='#E65100'; medCol='#fff'; }
       else { medBg='#2E7D32'; medCol='#fff'; }
-      row+=`<td style="text-align:center;font-size:12px;font-weight:${med>0?'700':'400'};background:${medBg};color:${medCol};padding:0;border-bottom:2px solid var(--b);border-right:1px dashed rgba(0,0,0,.08);${todayOutline}">
+      row+=`<td title="${tipTexto}" style="text-align:center;font-size:12px;font-weight:${med>0?'700':'400'};background:${medBg};color:${medCol};padding:0;border-bottom:2px solid var(--b);border-right:1px dashed rgba(0,0,0,.08);${marcaGira}${todayOutline}">
         ${med>0
           ?`<button onclick="openDiarioDetail('${safeRep}','${d}')" style="width:100%;height:100%;min-height:32px;background:none;border:none;cursor:pointer;color:inherit;font-weight:700;font-size:12px;font-family:var(--f);padding:4px 0">${med}${med>=metaHoy?'<sup style="font-size:9px">✓</sup>':''}</button>`
           :`<span style="display:block;padding:4px 0"></span>`}
@@ -6324,6 +6343,7 @@ function renderDiario(){
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#C62828;border-radius:2px"></span>3 o más bajo la meta</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#E65100;border-radius:2px"></span>1-2 bajo la meta</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#2E7D32;border-radius:2px"></span>meta o más ✓</span>
+    <span style="display:flex;align-items:center;gap:3px" title="Las jornadas de gira piden ${META_GIR} en vez de ${META_CIU}"><span style="display:inline-block;width:12px;height:12px;background:#EEE;box-shadow:inset 3px 0 0 #00695C;border-radius:2px"></span>jornada de gira (meta ${META_GIR})</span>
     <span style="margin-left:8px"><b>Farmacias (meta ${META_FARM}/día):</b></span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#B71C1C;border-radius:2px"></span>≤3</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#BF360C;border-radius:2px"></span>4</span>
