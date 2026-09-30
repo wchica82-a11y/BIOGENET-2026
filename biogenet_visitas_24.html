@@ -408,7 +408,7 @@ textarea{resize:none;height:88px;line-height:1.5}
       <div id="mr-window-blocked" class="card" style="display:none;background:#FEF3C7;border-color:#F59E0B">
         <div class="ctitle" style="color:#92400E">🔒 Registro de muestras cerrado</div>
         <p style="font-size:13px;color:#92400E;margin:0">
-          El plazo para registrar muestras recibidas no está habilitado. Si necesitas reportar, <b>solicita autorización al gerente</b> para que extienda la ventana.
+          El plazo para registrar muestras recibidas no está habilitado. Si necesitas reportar, <b>solicita autorización</b> para que se extienda la ventana.
         </p>
         <p id="mr-window-info" style="font-size:12px;color:#92400E;margin-top:6px;font-weight:600"></p>
       </div>
@@ -554,7 +554,7 @@ textarea{resize:none;height:88px;line-height:1.5}
           <h3 style="font-size:16px;font-weight:700;color:#1565C0;margin:0">➕ Solicitar alta de farmacia</h3>
           <button onclick="closeSolicitudAltaFarm()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#666">&times;</button>
         </div>
-        <p style="font-size:11.5px;color:var(--t3);margin-bottom:.7rem">Completa los datos. La solicitud va directo al gerente para aprobación.</p>
+        <p style="font-size:11.5px;color:var(--t3);margin-bottom:.7rem">Completa los datos. La solicitud queda en espera de aprobación.</p>
         <div style="display:flex;flex-direction:column;gap:8px">
           <input id="saf-cod" placeholder="Código de la farmacia * (ej: FG136, BPG25)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <input id="saf-pdv" placeholder="Nombre del PDV * (ej: FYBECA URDESA)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
@@ -578,7 +578,7 @@ textarea{resize:none;height:88px;line-height:1.5}
           <h3 style="font-size:16px;font-weight:700;color:#1A5C3A;margin:0">➕ Solicitar alta de médico</h3>
           <button onclick="closeSolicitudAlta()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#666">&times;</button>
         </div>
-        <p style="font-size:11.5px;color:var(--t3);margin-bottom:.7rem">Completa los datos. La solicitud pasa primero a tu compañero para confirmar, luego al gerente para aprobación final.</p>
+        <p style="font-size:11.5px;color:var(--t3);margin-bottom:.7rem">Completa los datos. La solicitud pasa primero a tu compañero para confirmar, luego queda en espera de aprobación final.</p>
         <div style="display:flex;flex-direction:column;gap:8px">
           <input id="sa-apellidos" placeholder="Apellidos * (2 apellidos, ej: PEREZ GOMEZ)" oninput="this.value=this.value.toUpperCase()" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;text-transform:uppercase">
           <input id="sa-nombres" placeholder="Nombres * (2 nombres, ej: JUAN CARLOS)" oninput="this.value=this.value.toUpperCase()" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;text-transform:uppercase">
@@ -2208,7 +2208,7 @@ async function validateRepAccess(rep) {
   // === FIN EXCEPCION ===
   // 1. Check iPad
   if (!isIPad()) {
-    return {ok: false, msg: '⚠️ Esta aplicación solo funciona en los iPads de trabajo asignados.<br>Si tienes un iPad y aún así ves este mensaje, contacta al gerente.'};
+    return {ok: false, msg: '⚠️ Esta aplicación solo funciona en los iPads de trabajo asignados.'};
   }
   // 2. Check device token
   var hasToken = await checkDeviceToken(rep);
@@ -2219,7 +2219,7 @@ async function validateRepAccess(rep) {
   // 3. Check si hay ventana de activación
   var window_ = await hasActivationWindow(rep);
   if (!window_) {
-    return {ok: false, msg: '🔒 Este iPad no está autorizado para tu cuenta.<br>Pídele al gerente que <b>active el registro de tu iPad</b> desde el panel gerencial, y vuelve a intentar en los próximos 30 minutos.'};
+    return {ok: false, msg: '🔒 Este iPad no está autorizado para tu cuenta.<br>Solicita que se <b>active el registro de tu iPad</b> y vuelve a intentar en los próximos 30 minutos.'};
   }
   // 4. Hay ventana — registrar este dispositivo
   var ok = await registerDevice(rep, window_.id);
@@ -2653,7 +2653,7 @@ async function checkMRWindow(){
       // No hay ventana definida: bloquear
       blockedEl.style.display = '';
       formEl.style.display = 'none';
-      if (infoEl) infoEl.textContent = 'El gerente aún no ha definido un período de registro.';
+      if (infoEl) infoEl.textContent = 'No se ha definido un período de registro.';
       return false;
     }
     if (hoy < w.ini || hoy > w.fin) {
@@ -2696,7 +2696,7 @@ async function saveMuestraRecibida(){
   // Re-validar ventana
   var permitido = await checkMRWindow();
   if (!permitido) {
-    sEl.innerHTML='<span style="color:var(--r)">El plazo de registro está cerrado. Solicita autorización al gerente.</span>';
+    sEl.innerHTML='<span style="color:var(--r)">El plazo de registro está cerrado. Solicita autorización.</span>';
     return;
   }
   var prod = document.getElementById('mr-producto').value;
@@ -3377,7 +3377,7 @@ function applyPanelOverrides(){
 async function submitSolicitud(tipo, data){
   var comp = REP_PAIRS[CU];
   if (!comp){
-    alert('No tienes compañero asignado. Pídele al gerente que configure tu pareja en Panel gerencial → Pares.');
+    alert('No tienes compañero asignado.');
     return false;
   }
   var payload = {
@@ -3412,7 +3412,7 @@ async function submitSolicitud(tipo, data){
 }
 // Confirmar solicitud (compañero)
 async function confirmarSolicitudCompanero(id){
-  if (!confirm('¿Confirmas que estás de acuerdo con esta solicitud? Después irá al gerente para aprobación final.')) return;
+  if (!confirm('¿Confirmas que estás de acuerdo con esta solicitud? Después quedará en espera de aprobación final.')) return;
   try {
     await sbRequest('PATCH', '/panel_solicitudes?id=eq.'+id, {
       estado: 'pendiente_gerente',
@@ -3420,7 +3420,7 @@ async function confirmarSolicitudCompanero(id){
     });
     await loadPanelSolicitudes();
     renderMisSolicitudes();
-    if (typeof showToast==='function') showToast('✅ Confirmada. Pendiente aprobación del gerente.');
+    if (typeof showToast==='function') showToast('✅ Confirmada. En espera de aprobación.');
   } catch(e){ alert('Error: '+e.message); }
 }
 // Rechazar solicitud (compañero o gerente)
@@ -3569,7 +3569,7 @@ function renderMisSolicitudes(){
       + '</div>';
     html += mias.slice(0,15).map(function(s){
       var estadoCol = {'pendiente_companero':'#C47A0A','pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado] || '#666';
-      var estadoLbl = {'pendiente_companero':'Espera compañero','pendiente_gerente':'Espera gerente','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
+      var estadoLbl = {'pendiente_companero':'Espera compañero','pendiente_gerente':'En espera de aprobación','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
       var tipoLbl = s.tipo==='alta' ? '➕ Alta' : '❌ Baja';
       return '<div style="border:1px solid var(--b);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:#fff">'
         + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12.5px">'+tipoLbl+' · '+esc_(s.nombre)+'</b><span style="font-size:10.5px;color:#fff;background:'+estadoCol+';padding:2px 7px;border-radius:5px;font-weight:700">'+estadoLbl+'</span></div>'
@@ -3648,7 +3648,7 @@ async function submitFarmSolicitud(tipo, data){
   try {
     await sbRequest('POST', '/farmacia_solicitudes', payload);
     await loadFarmSolicitudes();
-    if (typeof showToast==='function') showToast('✅ Solicitud enviada al gerente.');
+    if (typeof showToast==='function') showToast('✅ Solicitud enviada. En espera de aprobación.');
     renderMisFarmSolicitudes();
     return true;
   } catch(e){ alert('Error: '+e.message); return false; }
@@ -3750,7 +3750,7 @@ function renderMisFarmSolicitudes(){
   var head = resueltasVisibles>0 ? '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button onclick="limpiarFarmSolicitudesLeidas()" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11px;cursor:pointer;font-family:var(--f)">🧹 Limpiar leídas ('+resueltasVisibles+')</button></div>' : '';
   el.innerHTML = head + mias.slice(0,15).map(function(s){
     var estadoCol = {'pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado] || '#666';
-    var estadoLbl = {'pendiente_gerente':'Espera gerente','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
+    var estadoLbl = {'pendiente_gerente':'En espera de aprobación','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
     var tipoLbl = s.tipo==='alta' ? '➕ Alta' : '❌ Baja';
     return '<div style="border:1px solid var(--b);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:#fff">'
       + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12.5px">'+tipoLbl+' · '+esc_(s.pdv)+' <span style="color:var(--t3);font-weight:400">('+esc_(s.cod)+')</span></b><span style="font-size:10.5px;color:#fff;background:'+estadoCol+';padding:2px 7px;border-radius:5px;font-weight:700">'+estadoLbl+'</span></div>'
@@ -4823,7 +4823,7 @@ function renderHist(){
     // Pendientes médicos
     const panel=PANEL[CU]||[];
     if (!panel.length) {
-      el.innerHTML='<div class="empty"><div class="empty-ico">⚠️</div><p>No tienes médicos asignados a tu panel. Contacta al gerente.</p></div>';
+      el.innerHTML='<div class="empty"><div class="empty-ico">⚠️</div><p>No tienes médicos asignados a tu panel.</p></div>';
       return;
     }
     const pending=panel.filter(d=>!cycMedVisited.has(d.nombre.toUpperCase())&&(!q||d.nombre.toUpperCase().includes(q)||(d.ciudad||'').toUpperCase().includes(q)));
@@ -4844,7 +4844,7 @@ function renderHist(){
   } else {
     // Pendientes farmacias
     if (!farmList.length) {
-      el.innerHTML='<div class="empty"><div class="empty-ico">⚠️</div><p>No tienes farmacias asignadas a tu panel. Contacta al gerente.</p></div>';
+      el.innerHTML='<div class="empty"><div class="empty-ico">⚠️</div><p>No tienes farmacias asignadas a tu panel.</p></div>';
       return;
     }
     const pending=farmList.filter(f=>{
@@ -4873,7 +4873,7 @@ function renderHist(){
   } catch(err) {
     console.error('Error en renderHist:', err);
     var elx = document.getElementById('hlist');
-    if (elx) elx.innerHTML = '<div class="empty"><div class="empty-ico">⚠️</div><p>Error al cargar visitas: ' + err.message + '</p><p style="font-size:11px;color:var(--t3);margin-top:8px">Reporta esto al gerente: ' + err.stack.split('\n')[0] + '</p></div>';
+    if (elx) elx.innerHTML = '<div class="empty"><div class="empty-ico">⚠️</div><p>Error al cargar visitas: ' + err.message + '</p><p style="font-size:11px;color:var(--t3);margin-top:8px">Detalle: ' + err.stack.split('\n')[0] + '</p></div>';
   }
 }
 
@@ -4918,9 +4918,9 @@ function permBannerHTML(v){
   // Sin autorización:
   if (s.withinWindow) {
     // Puede eliminar (ventana 2h) pero para modificar necesita autorización
-    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Para modificar solicitar autorización al gerente</div>';
+    return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Para modificar solicitar autorización</div>';
   }
-  return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Solicitar autorización al gerente para modificar o eliminar</div>';
+  return '<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#FFF3CD;color:#856404;border:1px solid #FFEAA0;font-size:11px;font-weight:600;font-family:var(--f);display:inline-block">🔒 Solicitar autorización para modificar o eliminar</div>';
 }
 function vcardHTML(v, clickable){
   // Farmacia visit card
@@ -4974,7 +4974,7 @@ async function reqDeleteVisit(visitId){
     hasGrant = (nowMs - grantMs) < GRANT_WINDOW_MS;
   }
   if (!withinWindow && !hasGrant) {
-    alert('Esta visita ya no se puede eliminar. Pide autorización al gerente.');
+    alert('Esta visita ya no se puede eliminar. Solicita autorización.');
     return;
   }
   var nombre = v.tipo_visita === 'farmacia' ? (v.farmacia||'') : (v.medico||'');
@@ -4999,7 +4999,7 @@ async function reqDeleteVisit(visitId){
     var deletedRows = await resp.json();
     if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
       // Supabase devolvió OK pero no eliminó nada → probablemente RLS bloqueó
-      alert('No se pudo eliminar. Es posible que falten permisos en la base de datos. Contacta al gerente.');
+      alert('No se pudo eliminar. Intenta de nuevo más tarde.');
       return;
     }
     // 2. Quitar de cache local
@@ -5072,7 +5072,7 @@ function openModifyVisit(visitId){
   if (!v) { alert('Visita no encontrada localmente'); return; }
   var s = _visitPermState(v);
   if (!s.withinWindow && !s.hasGrant) {
-    alert('Esta visita ya no se puede modificar. Pide autorización al gerente.');
+    alert('Esta visita ya no se puede modificar. Solicita autorización.');
     return;
   }
   _modifyingVisit = v;
@@ -5132,7 +5132,7 @@ async function saveModifyVisit(){
     var updated = await resp.json();
     if (!Array.isArray(updated) || updated.length === 0) {
       statusEl.style.color = '#C0392B';
-      statusEl.textContent = '❌ No se pudo actualizar. Verifica permisos con el gerente.';
+      statusEl.textContent = '❌ No se pudo actualizar. Intenta de nuevo más tarde.';
       saveBtn.disabled = false;
       return;
     }
@@ -8780,7 +8780,7 @@ async function eliminarMiPedido(id){
   if (!p){ alert('Pedido no encontrado.'); return; }
   if (p.rep !== CU){ alert('Solo puedes eliminar tus propios pedidos.'); return; }
   if (p.estado !== 'enviado' && p.estado !== 'borrador'){
-    alert('Este pedido ya fue procesado por gerencia/facturación y no se puede eliminar. Pídele al gerente que lo cancele.');
+    alert('Este pedido ya fue procesado y no se puede eliminar. Solicita su cancelación.');
     return;
   }
   if (!confirm('¿Eliminar el pedido de ' + (p.razon_social||'sin cliente') + ' por ' + fmtMoney(p.total||0) + '? Esta acción no se puede deshacer.')) return;
