@@ -2245,7 +2245,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-08-075831';
+const APP_VERSION = '2026-10-08-083205';
 
 async function checkForUpdates() {
   try {
@@ -5105,6 +5105,9 @@ function openModifyVisit(visitId){
   document.getElementById('modFecha').value = v.fecha || '';
   document.getElementById('modComentario').value = v.comentario || '';
   document.getElementById('modStatus').innerHTML = '';
+  // El modal se reutiliza: tras un guardado exitoso el boton quedaba
+  // deshabilitado y la siguiente visita no se podia guardar
+  document.getElementById('modSaveBtn').disabled = false;
   // Cargar muestras
   _modMuestrasList = (Array.isArray(v.muestras) ? v.muestras : []).filter(function(m){ return typeof m === 'object' && m.producto; }).map(function(m){ return {producto:m.producto, cantidad:m.cantidad||1}; });
   _modMaterialesList = (Array.isArray(v.materiales) ? v.materiales : []).filter(function(m){ return typeof m === 'object' && m.material; }).map(function(m){ return {material:m.material, cantidad:m.cantidad||1}; });
