@@ -717,6 +717,7 @@ textarea{resize:none;height:88px;line-height:1.5}
               <th rowspan="2">Línea</th>
               <th colspan="3" style="text-align:center;background:#E8F5E9;color:#2E7D32;border-bottom:2px solid #2E7D32">👨‍⚕️ Médicos (% sobre panel asignado)</th>
               <th colspan="2" style="text-align:center;background:#E3F0FF;color:#1565C0;border-bottom:2px solid #1565C0">🏪 Farmacias</th>
+              <th rowspan="2" style="text-align:center">Comunicado</th>
             </tr>
             <tr>
               <th style="background:#F5FAF5">CIU</th>
@@ -1476,7 +1477,9 @@ async function pullVisitsFromCloud(rep, sinceDate){
   } catch (e) {
     console.warn('Pull falló:', e.message);
     setSyncStatus('error');
-    return [];
+    // null (no []) para que quien llama no lo confunda con "la nube no tiene
+    // visitas" y borre las del iPad
+    return null;
   }
 }
 
@@ -1540,6 +1543,12 @@ async function manualSync(){
     }
     // 2) Re-pull desde la nube para tener todo actualizado
     await syncFromCloud(CU);
+    // syncFromCloud no lanza errores: los deja en el estado. Sin esto el
+    // boton decia "completada" mientras la barra seguia en error.
+    if (SYNC_STATUS === 'error') throw new Error('syncFromCloud termino en error');
+    // Altas y bajas aprobadas despues de abrir la app
+    if (typeof loadPanelOverrides === 'function') await loadPanelOverrides();
+    if (typeof loadFarmOverrides === 'function') await loadFarmOverrides();
     // 3) Re-renderizar lo que esté visible
     try {
       if (CU === 'GERENTE' && typeof renderGer === 'function') renderGer();
@@ -1914,6 +1923,7 @@ async function syncFromCloud(user){
       String(since.getMonth()+1).padStart(2,'0') + '-' + 
       String(since.getDate()).padStart(2,'0');
     var remoteVisits = await pullVisitsFromCloud(rep, sinceStr);
+    if (remoteVisits === null) throw new Error('No se pudieron descargar las visitas');
     var added = mergeRemoteVisits(remoteVisits);
     // 4. Descargar ubicaciones GPS
     try { await loadUbicaciones(rep); renderGpsProgress(); await retryUbicPending(); }
@@ -2235,7 +2245,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-09-30-084922';
+const APP_VERSION = '2026-10-08-075831';
 
 async function checkForUpdates() {
   try {
@@ -2876,7 +2886,16 @@ function fmtHoraEcuador(ts){
   }
 }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
-function save(){ localStorage.setItem('bg_v2',JSON.stringify(visits)); }
+// Safari permite ~5 MB por sitio y la cache de ubicaciones GPS puede ocuparlos
+// casi todos. Si no hay espacio se libera esa cache (se vuelve a descargar en
+// cada sincronizacion) y se reintenta: las visitas tienen prioridad.
+function save(){
+  var data = JSON.stringify(visits);
+  try { localStorage.setItem('bg_v2', data); return; }
+  catch(e){ console.warn('save sin espacio, liberando cache GPS:', e.message); }
+  try { localStorage.removeItem('bg_ubic_cache'); localStorage.setItem('bg_v2', data); }
+  catch(e){ console.warn('save fallo aun sin cache GPS:', e.message); }
+}
 function pctColor(p){ return p>=80?'#1A5C3A':p>=50?'#C47A0A':'#C0392B'; }
 
 // Repinta la vista del gerente que este abierta. Se llama cada vez que
@@ -5278,8 +5297,237 @@ function renderCobertura(){
       ${barCell(totVis,totPanel,pctTotal)}
       <td style="text-align:center;font-size:13px;font-weight:600;color:#1565C0">${farmVis}<span style="font-size:11px;color:var(--t3);font-weight:400"> / ${farmTot}</span></td>
       ${farmPctCell(farmVis,farmTot,farmPct)}
+      <td style="text-align:center"><button onclick="openComunicadoCobertura('${rep.replace(/'/g,"\\'")}')" title="Generar comunicado de cobertura" style="padding:6px 10px;border-radius:7px;border:1px solid #1A5C3A;background:#E8F4EE;color:#1A5C3A;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--f);white-space:nowrap">📧 Generar</button></td>
     </tr>`;
   }).join('');
+}
+
+// ── COMUNICADO DE COBERTURA (correo al visitador) ──
+// Arma un correo con la cobertura del ciclo, el detalle diario de los dias
+// trabajados y lo que falta para la meta. Se copia con formato y se pega en
+// Outlook: un enlace mailto solo admite texto plano.
+const META_COBERTURA = 0.90;   // cobertura del panel esperada al cierre del ciclo
+const REP_EMAILS = {};         // {"NOMBRE REP": "correo@biogenet.com.ec"}
+const FIRMA_COMUNICADO = 'Wilbert Chica';
+
+function _comEmail(rep){
+  try { var x = localStorage.getItem('bg_rep_email_' + rep); if (x) return x; } catch(e){}
+  return REP_EMAILS[rep] || '';
+}
+function _comNombre(rep){
+  return String(rep).toLowerCase().replace(/(^|\s)\S/g, function(c){ return c.toUpperCase(); });
+}
+function _comDia(d){
+  var dt = new Date(d + 'T12:00:00');
+  return ['dom','lun','mar','mié','jue','vie','sáb'][dt.getDay()] + ' ' + dt.getDate() + ' ' +
+         ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][dt.getMonth()];
+}
+
+function calcComunicado(rep){
+  // Ciclo elegido en el filtro de cobertura; con "Acumulado total" se usa el actual
+  var val = (document.getElementById('g-cob-ciclo') || {}).value || '';
+  var cy = getAllCycles().find(function(c){ return 'ciclo-' + c.num === val; }) || CYCLE;
+  if (!cy) return null;
+  var META_CIU = 12, META_GIR = 14, META_FARM = 5;
+  // Corte al dia anterior: el dia en curso todavia no termina
+  var ay = new Date(todayISO() + 'T12:00:00'); ay.setDate(ay.getDate() - 1);
+  var ayer = ay.getFullYear() + '-' + String(ay.getMonth()+1).padStart(2,'0') + '-' + String(ay.getDate()).padStart(2,'0');
+  var corte = ayer < cy.fin ? ayer : cy.fin;
+
+  var dias = [];
+  for (var d = new Date(cy.ini + 'T12:00:00'); d <= new Date(cy.fin + 'T12:00:00'); d.setDate(d.getDate() + 1)) {
+    dias.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
+  }
+  var esLab = function(x){ var w = new Date(x + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
+  var habTot   = dias.filter(esLab).length;
+  var habTrans = dias.filter(function(x){ return esLab(x) && x <= corte; }).length;
+  var habRest  = habTot - habTrans;
+  var frac     = habTot ? habTrans / habTot : 1;
+
+  var rv   = visits.filter(function(v){ return v.rep === rep && !esNE(v) && v.fecha >= cy.ini && v.fecha <= corte; });
+  var med  = rv.filter(function(v){ return v.tipo_visita !== 'farmacia'; });
+  var farm = rv.filter(function(v){ return v.tipo_visita === 'farmacia'; });
+
+  // Cobertura: mismo calculo que la tabla de la pestana
+  var panel     = PANEL[rep] || [];
+  var farmPanel = FARM_PANEL[farmPanelKey(rep)] || [];
+  var medVis  = new Set(med.map(function(v){ return String(v.medico).toUpperCase(); })).size;
+  var farmSet = new Set(farm.map(function(v){ return String(v.farmacia_cod); }));
+  var farmVis = farmPanel.filter(function(f){ return farmSet.has(String(f.cod)); }).length;
+
+  var cob = function(vis, tot){
+    var objetivo = Math.ceil(tot * META_COBERTURA);
+    var esperado = Math.round(tot * META_COBERTURA * frac);
+    var falta    = Math.max(0, objetivo - vis);
+    var ritmo    = habTrans ? vis / habTrans : 0;
+    return {
+      vis: vis, tot: tot, pct: tot ? Math.round(vis / tot * 100) : 0,
+      esperado: esperado, pctEsp: Math.round(META_COBERTURA * frac * 100),
+      brecha: vis - esperado, objetivo: objetivo, falta: falta,
+      porDia: habRest ? Math.ceil(falta / habRest) : falta,
+      proy: tot ? Math.min(100, Math.round((vis + ritmo * habRest) / tot * 100)) : 0
+    };
+  };
+
+  // Detalle diario: dias habiles transcurridos y cualquier dia con visitas
+  var esGir = function(v){ return String(v.tipo_panel || '').toUpperCase().indexOf('GIR') === 0; };
+  var filas = [], realMed = 0, metaMed = 0, realFarm = 0, sinReg = 0, diasOk = 0;
+  dias.forEach(function(x){
+    var m = med.filter(function(v){ return v.fecha === x; });
+    var f = farm.filter(function(v){ return v.fecha === x; }).length;
+    var lab = esLab(x) && x <= corte;
+    if (!lab && !m.length && !f) return;
+    var g = m.filter(esGir).length;
+    var gira = m.length && g > m.length - g;
+    var meta = lab ? (gira ? META_GIR : META_CIU) : 0;
+    realMed += m.length; realFarm += f;
+    if (lab){ metaMed += meta; if (!m.length && !f) sinReg++; if (m.length >= meta) diasOk++; }
+    filas.push({ dia: x, lab: lab, gira: gira, med: m.length, meta: meta, farm: f });
+  });
+
+  return {
+    rep: rep, cy: cy, corte: corte, habTot: habTot, habTrans: habTrans, habRest: habRest,
+    medCob: cob(medVis, panel.length), farmCob: cob(farmVis, farmPanel.length),
+    filas: filas, realMed: realMed, metaMed: metaMed, realFarm: realFarm,
+    metaFarm: habTrans * META_FARM, META_FARM: META_FARM, sinReg: sinReg, diasOk: diasOk
+  };
+}
+
+function htmlComunicado(c){
+  var F = 'font-family:Arial,Helvetica,sans-serif;';
+  var ROJO = '#C62828', VERDE = '#2E7D32', NARANJA = '#E65100', GRIS = '#666666';
+  var atrasoMed  = c.medCob.brecha < 0;
+  var atrasoFarm = c.farmCob.tot > 0 && c.farmCob.brecha < 0;
+  var atrasado   = atrasoMed || atrasoFarm;
+  var td  = 'style="' + F + 'font-size:13px;padding:7px 10px;border:1px solid #DDDDDD;';
+  var th  = 'style="' + F + 'font-size:12px;padding:7px 10px;border:1px solid #DDDDDD;background:#1A5C3A;color:#FFFFFF;text-align:center;"';
+  var p   = 'style="' + F + 'font-size:14px;color:#222222;line-height:1.5;margin:0 0 12px 0;"';
+  var h   = 'style="' + F + 'font-size:15px;color:#1A5C3A;margin:22px 0 8px 0;"';
+
+  var filaCob = function(lbl, k){
+    var col = k.brecha < 0 ? ROJO : VERDE;
+    return '<tr><td ' + td + 'font-weight:bold;">' + lbl + '</td>' +
+      '<td ' + td + 'text-align:center;color:' + col + ';font-weight:bold;">' + k.pct + '%<br><span style="font-size:11px;font-weight:normal;color:' + GRIS + '">' + k.vis + ' de ' + k.tot + '</span></td>' +
+      '<td ' + td + 'text-align:center;">' + k.pctEsp + '%<br><span style="font-size:11px;color:' + GRIS + '">' + k.esperado + ' de ' + k.tot + '</span></td>' +
+      '<td ' + td + 'text-align:center;color:' + col + ';font-weight:bold;">' + (k.brecha < 0 ? k.brecha : '+' + k.brecha) + '</td>' +
+      '<td ' + td + 'text-align:center;">' + k.proy + '%</td></tr>';
+  };
+
+  var out = '<div style="' + F + 'max-width:680px;">';
+  out += '<p ' + p + '>Buen día, ' + _comNombre(c.rep) + ':</p>';
+  out += '<p ' + p + '>Te comparto el seguimiento de tu cobertura en el <b>Ciclo ' + c.cy.num + '</b> (' + fmtShort(c.cy.ini) + ' al ' + fmtShort(c.cy.fin) + '), con corte al <b>' + fmtShort(c.corte) + '</b>. ' +
+         'Han transcurrido <b>' + c.habTrans + ' de ' + c.habTot + ' días hábiles</b> del ciclo; quedan <b>' + c.habRest + '</b>.</p>';
+
+  out += '<h3 ' + h + '>Cobertura del panel: cuánto llevas y cuánto deberías llevar</h3>';
+  out += '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;">' +
+    '<tr><th ' + th + '></th><th ' + th + '>Llevas</th><th ' + th + '>Deberías llevar hoy</th><th ' + th + '>Diferencia</th><th ' + th + '>Cierre a este ritmo</th></tr>' +
+    filaCob('Médicos', c.medCob) + (c.farmCob.tot ? filaCob('Farmacias', c.farmCob) : '') + '</table>';
+  out += '<p style="' + F + 'font-size:11px;color:' + GRIS + ';margin:6px 0 0 0;">Meta del ciclo: ' + Math.round(META_COBERTURA * 100) + '% del panel asignado (' + c.medCob.objetivo + ' médicos' + (c.farmCob.tot ? ', ' + c.farmCob.objetivo + ' farmacias' : '') + '). "Deberías llevar" es la parte proporcional a los días hábiles transcurridos.</p>';
+
+  out += '<h3 ' + h + '>Productividad diaria</h3>';
+  out += '<p ' + p + '>Médicos visitados: <b>' + c.realMed + '</b> de una meta acumulada de <b>' + c.metaMed + '</b> (12 por día en ciudad, 14 en gira). ' +
+         'Farmacias: <b>' + c.realFarm + '</b> de <b>' + c.metaFarm + '</b> (' + c.META_FARM + ' por día). ' +
+         'Cumpliste la meta de médicos en <b>' + c.diasOk + ' de ' + c.habTrans + '</b> días' +
+         (c.sinReg ? ' y hay <b style="color:' + ROJO + '">' + c.sinReg + ' día' + (c.sinReg === 1 ? '' : 's') + ' hábil' + (c.sinReg === 1 ? '' : 'es') + ' sin ningún registro</b>' : '') + '.</p>';
+  out += '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;">' +
+    '<tr><th ' + th + '>Día</th><th ' + th + '>Jornada</th><th ' + th + '>Médicos / meta</th><th ' + th + '>Farmacias / meta</th></tr>';
+  c.filas.forEach(function(r){
+    var colM = !r.lab ? GRIS : r.med >= r.meta ? VERDE : r.med >= r.meta - 2 && r.med > 0 ? NARANJA : ROJO;
+    var colF = !r.lab ? GRIS : r.farm >= c.META_FARM ? VERDE : r.farm === c.META_FARM - 1 ? NARANJA : ROJO;
+    var sin  = r.lab && !r.med && !r.farm;
+    out += '<tr>' +
+      '<td ' + td + 'white-space:nowrap;">' + _comDia(r.dia) + '</td>' +
+      '<td ' + td + 'text-align:center;color:' + GRIS + ';">' + (sin ? '<b style="color:' + ROJO + '">Sin registro</b>' : !r.lab ? 'Fin de semana' : r.gira ? 'Gira' : 'Ciudad') + '</td>' +
+      '<td ' + td + 'text-align:center;color:' + colM + ';font-weight:bold;">' + r.med + (r.lab ? ' / ' + r.meta : '') + '</td>' +
+      '<td ' + td + 'text-align:center;color:' + colF + ';font-weight:bold;">' + r.farm + (r.lab ? ' / ' + c.META_FARM : '') + '</td></tr>';
+  });
+  out += '</table>';
+
+  out += '<h3 ' + h + '>' + (atrasado ? 'Recuperación de cobertura' : 'Seguimiento') + '</h3>';
+  if (atrasado) {
+    out += '<p ' + p + '>Tu cobertura está <b style="color:' + ROJO + '">por debajo de lo esperado</b> a esta altura del ciclo' +
+      (atrasoMed ? ': te faltan <b>' + (-c.medCob.brecha) + ' médicos</b> para estar al día' : '') +
+      (atrasoFarm ? (atrasoMed ? ' y ' : ': te faltan ') + '<b>' + (-c.farmCob.brecha) + ' farmacias</b>' : '') + '. ' +
+      'Al ritmo actual cerrarías el ciclo con un <b>' + c.medCob.proy + '%</b> de cobertura de médicos, por debajo de la meta del ' + Math.round(META_COBERTURA * 100) + '%.</p>';
+    out += '<p ' + p + '><b>Es necesario que recuperes la cobertura de inmediato.</b> ';
+    if (c.habRest > 0) {
+      out += 'Para llegar a la meta, en los ' + c.habRest + ' días hábiles que quedan debes visitar al menos <b>' + c.medCob.porDia + ' médicos nuevos del panel por día</b>' +
+        (c.farmCob.tot && c.farmCob.falta ? ' y <b>' + c.farmCob.porDia + ' farmacias del panel por día</b>' : '') +
+        ', priorizando a quienes aún no has visitado en este ciclo. ';
+    }
+    out += 'Espero ver el avance reflejado en el sistema al cierre de esta semana. Si existe algún inconveniente que te impida cumplir, comunícamelo hoy mismo para buscar una solución.</p>';
+  } else {
+    out += '<p ' + p + '>Vas <b style="color:' + VERDE + '">en línea con lo esperado</b> a esta altura del ciclo. ' +
+      (c.medCob.falta ? 'Para cerrar en la meta te faltan ' + c.medCob.falta + ' médicos' + (c.habRest ? ' (' + c.medCob.porDia + ' por día)' : '') + '. ' : '') +
+      'Mantén el ritmo y asegúrate de completar el panel antes del cierre del ciclo.</p>';
+  }
+  out += '<p ' + p + '>Saludos,<br>' + FIRMA_COMUNICADO + '</p></div>';
+  return out;
+}
+
+function openComunicadoCobertura(rep){
+  var c = calcComunicado(rep);
+  if (!c) { alert('No hay un ciclo definido.'); return; }
+  var old = document.getElementById('com-modal'); if (old) old.remove();
+  var asunto = 'Cobertura Ciclo ' + c.cy.num + ' — ' + _comNombre(rep) +
+    ((c.medCob.brecha < 0 || (c.farmCob.tot && c.farmCob.brecha < 0)) ? ' — Recuperación requerida' : ' — Seguimiento');
+  var inp = 'style="width:100%;padding:8px 10px;border:1px solid var(--b);border-radius:7px;font-size:13px;font-family:var(--f);margin:3px 0 8px 0;box-sizing:border-box"';
+  var btn = function(bg, col){ return 'style="padding:9px 14px;border-radius:8px;border:1px solid ' + bg + ';background:' + (col ? '#fff' : bg) + ';color:' + (col || '#fff') + ';font-weight:700;font-size:13px;cursor:pointer;font-family:var(--f)"'; };
+  var div = document.createElement('div');
+  div.id = 'com-modal';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px';
+  div.innerHTML =
+    '<div style="background:#fff;border-radius:14px;width:100%;max-width:760px;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<b style="font-size:16px">📧 Comunicado de cobertura · ' + rep + '</b>' +
+        '<button onclick="document.getElementById(\'com-modal\').remove()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#666">×</button></div>' +
+      '<label style="font-size:12px;font-weight:600">Para</label><input id="com-to" ' + inp + ' placeholder="correo del visitador" value="' + _comEmail(rep) + '">' +
+      '<label style="font-size:12px;font-weight:600">CC</label><input id="com-cc" ' + inp + ' placeholder="opcional, separa varios con ;">' +
+      '<label style="font-size:12px;font-weight:600">Asunto</label><input id="com-subj" ' + inp + '>' +
+      '<div style="font-size:11.5px;color:#666;margin:2px 0 6px 0">Vista previa — puedes editar el texto aquí antes de copiarlo.</div>' +
+      '<div id="com-preview" contenteditable="true" style="border:1px solid var(--b);border-radius:8px;padding:14px;max-height:52vh;overflow-y:auto;background:#fff">' + htmlComunicado(c) + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+        '<button onclick="comunicadoAbrirCorreo()" ' + btn('#1A5C3A') + '>📋 Copiar y abrir correo</button>' +
+        '<button onclick="comunicadoCopiar()" ' + btn('#1A5C3A', '#1A5C3A') + '>Solo copiar</button></div>' +
+      '<div style="font-size:11.5px;color:#666;margin-top:8px">Se abre Outlook con destinatario y asunto. Haz clic en el cuerpo del correo y pega con <b>Ctrl+V</b>.</div>' +
+    '</div>';
+  document.body.appendChild(div);
+  document.getElementById('com-subj').value = asunto;
+  div.addEventListener('click', function(e){ if (e.target === div) div.remove(); });
+  document.getElementById('com-to').addEventListener('change', function(){
+    try { localStorage.setItem('bg_rep_email_' + rep, this.value.trim()); } catch(e){}
+  });
+}
+
+async function comunicadoCopiar(silencioso){
+  var el = document.getElementById('com-preview');
+  if (!el) return false;
+  var ok = false;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html':  new Blob([el.innerHTML], {type: 'text/html'}),
+      'text/plain': new Blob([el.innerText], {type: 'text/plain'})
+    })]);
+    ok = true;
+  } catch(e) {
+    // Respaldo para navegadores sin ClipboardItem: copiar la seleccion
+    var r = document.createRange(); r.selectNodeContents(el);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    try { ok = document.execCommand('copy'); } catch(e2){}
+    s.removeAllRanges();
+  }
+  if (!silencioso && typeof showToast === 'function') showToast(ok ? '✅ Comunicado copiado con formato' : '❌ No se pudo copiar');
+  return ok;
+}
+
+async function comunicadoAbrirCorreo(){
+  var ok = await comunicadoCopiar(true);
+  var to = document.getElementById('com-to').value.trim();
+  var cc = document.getElementById('com-cc').value.trim();
+  var subj = document.getElementById('com-subj').value.trim();
+  if (typeof showToast === 'function') showToast(ok ? '✅ Copiado. Pega en el correo con Ctrl+V' : '❌ No se pudo copiar; usa "Solo copiar"');
+  window.location.href = 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@').replace(/%3B/gi, ';') +
+    '?' + (cc ? 'cc=' + encodeURIComponent(cc) + '&' : '') + 'subject=' + encodeURIComponent(subj);
 }
 
 function renderGRes(){
@@ -7475,8 +7723,21 @@ function rebuildUbicIndex(){
 }
 var UBIC_NORM_IDX = null;
 
-function saveUbicLocal(){ try{ localStorage.setItem('bg_ubic_cache', JSON.stringify(UBIC_CACHE)); }catch(e){} }
-(function(){ try{ var c=localStorage.getItem('bg_ubic_cache'); if(c) UBIC_CACHE=JSON.parse(c)||{}; }catch(e){ UBIC_CACHE={}; } })();
+// La cache GPS solo se guarda si es chica: con miles de ubicaciones llenaba el
+// almacenamiento del iPad y ya no se podian guardar las visitas.
+function saveUbicLocal(){
+  try {
+    var data = JSON.stringify(UBIC_CACHE);
+    if (data.length > 1000000) { localStorage.removeItem('bg_ubic_cache'); return; }
+    localStorage.setItem('bg_ubic_cache', data);
+  } catch(e){ try { localStorage.removeItem('bg_ubic_cache'); } catch(e2){} }
+}
+(function(){ try{
+  var c=localStorage.getItem('bg_ubic_cache');
+  // Caches grandes de versiones anteriores: se liberan para dejar espacio a las visitas
+  if (c && c.length > 1000000) { localStorage.removeItem('bg_ubic_cache'); c = null; }
+  if(c) UBIC_CACHE=JSON.parse(c)||{};
+}catch(e){ UBIC_CACHE={}; } })();
 
 function getUbicPending(){ try{ return JSON.parse(localStorage.getItem('bg_ubic_pending')||'[]'); }catch(e){ return []; } }
 function setUbicPending(a){ try{ localStorage.setItem('bg_ubic_pending', JSON.stringify(a)); }catch(e){} }
