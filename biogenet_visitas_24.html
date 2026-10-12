@@ -2250,7 +2250,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-12-091359';
+const APP_VERSION = '2026-10-12-093331';
 
 async function checkForUpdates() {
   try {
@@ -3651,7 +3651,25 @@ function applyFarmOverrides(){
       FARM_PANEL[key] = FARM_PANEL[key].filter(function(f){ return String(f.cod||'').toUpperCase().trim() !== codU; });
     }
   });
+  normalizeFarmPanel();
 }
+// Algunas farmacias vienen sin nombre de punto de venta: las 911 traen
+// pdv "nan" y el nombre dentro del codigo ("FA038 - Solca"); varias FARMAMIA
+// traen solo el codigo. Se arma un nombre legible para buscarlas y reportarlas.
+function normalizeFarmPanel(){
+  Object.keys(FARM_PANEL||{}).forEach(function(rep){
+    (FARM_PANEL[rep]||[]).forEach(function(f){
+      var pdv = String(f.pdv||'').trim(), cod = String(f.cod||'').trim();
+      var valido = pdv && !/^(nan|none|null)$/i.test(pdv) && pdv.toUpperCase() !== cod.toUpperCase();
+      if (valido) return;
+      var m = cod.match(/^([A-Z]{2}\d+)\s*-\s*(.+)$/i);
+      if (m) { f.pdv = m[1].toUpperCase() + ' - ' + m[2].trim(); return; }
+      var dir = String(f.dir||'').trim();
+      f.pdv = ((f.cadena||'') + ' ' + cod).trim() + (dir && !/^nan$/i.test(dir) ? ' · ' + dir : '');
+    });
+  });
+}
+normalizeFarmPanel();
 // Devuelve el rep dueño actual de una farmacia por cod, o null si no existe
 function _findFarmOwner(cod){
   var codU = String(cod||'').toUpperCase().trim();
