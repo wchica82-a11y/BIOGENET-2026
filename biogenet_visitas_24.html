@@ -206,17 +206,22 @@ textarea{resize:none;height:88px;line-height:1.5}
     <p style="font-size:13px;color:var(--t2);margin-bottom:.75rem">Ingresa tus credenciales para continuar</p>
     
     <div id="lerr" class="err">Usuario o contraseña incorrectos</div>
+    <!-- Formulario real + campo de usuario oculto: sin esto el navegador no
+         ofrece guardar la clave (el nombre se elige en un select) -->
+    <form id="lform" onsubmit="event.preventDefault(); doLogin();" autocomplete="on">
+    <input type="text" id="luser-ac" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
     <div class="field">
       <label>Representante</label>
-      <select id="luser">
+      <select id="luser" onchange="document.getElementById('luser-ac').value=this.value">
         <option value="">— Selecciona tu nombre —</option>
         <option value="GERENTE">GERENTE (Administrador)</option>
         <option value="FACTURACION">FACTURACION</option>
         <option disabled>──────────────</option>
       </select>
     </div>
-    <div class="field"><label>Contraseña</label><input type="password" id="lpass" placeholder="Tu contraseña" autocomplete="current-password"></div>
-    <button class="btn btn-p" onclick="doLogin()">Ingresar</button>
+    <div class="field"><label>Contraseña</label><input type="password" id="lpass" name="password" placeholder="Tu contraseña" autocomplete="current-password"></div>
+    <button type="submit" class="btn btn-p">Ingresar</button>
+    </form>
   </div>
 </div>
 
@@ -2245,7 +2250,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-12-091158';
+const APP_VERSION = '2026-10-12-091359';
 
 async function checkForUpdates() {
   try {
@@ -2804,7 +2809,7 @@ async function deleteMuestraRecibida(id){
   const sel = document.getElementById('luser');
   reps.forEach(r => { const o=document.createElement('option'); o.value=r; o.textContent=r; sel.appendChild(o); });
   document.getElementById('today-disp').textContent = fmtDate(new Date());
-  document.getElementById('lpass').addEventListener('keydown', e => e.key==='Enter' && doLogin());
+  // Enter lo maneja el formulario (submit); un listener aqui duplicaba el login
   // DEMO: pre-load materiales if none stored
   if(!localStorage.getItem('bg_materiales')){
     localStorage.setItem('bg_materiales', JSON.stringify(["Brochure Condrosol Trio", "Bloc de recetas Biogenet", "Lapicero promocional", "Brochure Colestil", "Folder Biogenet", "Separador de escritorio"]));
@@ -2938,6 +2943,10 @@ async function _passHash(user, pass){
   return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
 }
 async function doLogin(){
+  // Si el navegador autocompleto la clave guardada, el usuario llega por el
+  // campo oculto: pasarlo al select
+  var _ac = document.getElementById('luser-ac'), _sel = document.getElementById('luser');
+  if (_ac && _ac.value && !_sel.value && PASS_HASH[_ac.value]) _sel.value = _ac.value;
   const user=document.getElementById('luser').value.trim();
   const pass=document.getElementById('lpass').value.trim().toLowerCase();
   const err=document.getElementById('lerr');
