@@ -2250,7 +2250,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-13-091205';
+const APP_VERSION = '2026-10-13-130106';
 
 async function checkForUpdates() {
   try {
@@ -3560,7 +3560,7 @@ async function solicitarBajaMedico(nombre, esp, ciudad, dir, tipo){
 function _getDismissedSolic(){ try { return JSON.parse(localStorage.getItem('bg_solic_dismissed_med')||'[]'); } catch(e){ return []; } }
 function _saveDismissedSolic(a){ try { localStorage.setItem('bg_solic_dismissed_med', JSON.stringify(a)); } catch(e){} }
 function limpiarSolicitudesLeidas(){
-  var mias = (PANEL_SOLICITUDES||[]).filter(function(s){ return s.rep_solicita === CU && (s.estado==='aprobada' || s.estado==='rechazada'); });
+  var mias = (PANEL_SOLICITUDES||[]).filter(function(s){ return (s.rep_solicita === CU || s.rep_companero === CU) && (s.estado==='aprobada' || s.estado==='rechazada'); });
   var current = _getDismissedSolic();
   var set = {};
   current.forEach(function(id){ set[id]=1; });
@@ -3568,6 +3568,17 @@ function limpiarSolicitudesLeidas(){
   _saveDismissedSolic(Object.keys(set).map(Number));
   renderMisSolicitudes();
   if (typeof showToast==='function') showToast('🧹 Historial limpio');
+}
+function _solicCardHTML(s, quien){
+  var estadoCol = {'pendiente_companero':'#C47A0A','pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado] || '#666';
+  var estadoLbl = {'pendiente_companero':'Espera compañero','pendiente_gerente':'En espera de aprobación','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
+  var tipoLbl = s.tipo==='alta' ? '➕ Alta' : '❌ Baja';
+  return '<div style="border:1px solid var(--b);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:#fff">'
+    + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12.5px">'+tipoLbl+' · '+esc_(s.nombre)+'</b><span style="font-size:10.5px;color:#fff;background:'+estadoCol+';padding:2px 7px;border-radius:5px;font-weight:700">'+estadoLbl+'</span></div>'
+    + '<div style="font-size:11px;color:var(--t3);margin-top:3px">'+esc_(quien)+' · '+fmtShort(s.created_at.slice(0,10))+'</div>'
+    + (s.motivo?'<div style="font-size:11px;color:var(--t2);margin-top:3px"><i>'+esc_(s.motivo)+'</i></div>':'')
+    + (s.rechazo_motivo?'<div style="font-size:11px;color:#C0392B;margin-top:3px"><b>Rechazo:</b> '+esc_(s.rechazo_motivo)+'</div>':'')
+    + '</div>';
 }
 // Renderiza "Mis solicitudes" + "Solicitudes de mi compañero"
 function renderMisSolicitudes(){
@@ -3577,7 +3588,9 @@ function renderMisSolicitudes(){
   var dset = {}; dismissed.forEach(function(id){ dset[id]=1; });
   var mias = (PANEL_SOLICITUDES||[]).filter(function(s){ return s.rep_solicita === CU && !dset[s.id]; });
   var deComp = (PANEL_SOLICITUDES||[]).filter(function(s){ return s.rep_companero === CU && s.estado === 'pendiente_companero'; });
-  var resueltasVisibles = mias.filter(function(s){ return s.estado==='aprobada' || s.estado==='rechazada'; }).length;
+  // Las que el compañero ya confirmo o rechazo: siguen visibles para que vea en que quedaron
+  var delComp = (PANEL_SOLICITUDES||[]).filter(function(s){ return s.rep_companero === CU && s.estado !== 'pendiente_companero' && !dset[s.id]; });
+  var resueltasVisibles = mias.concat(delComp).filter(function(s){ return s.estado==='aprobada' || s.estado==='rechazada'; }).length;
   var html = '';
   // Sección 1: solicitudes pendientes de mi confirmación como compañero
   if (deComp.length){
@@ -3601,17 +3614,14 @@ function renderMisSolicitudes(){
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:.9rem 0 .4rem 0"><div style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.03em">📋 Mis solicitudes recientes ('+mias.length+')</div>'
       + (resueltasVisibles>0 ? '<button onclick="limpiarSolicitudesLeidas()" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11px;cursor:pointer;font-family:var(--f)">🧹 Limpiar leídas ('+resueltasVisibles+')</button>' : '')
       + '</div>';
-    html += mias.slice(0,15).map(function(s){
-      var estadoCol = {'pendiente_companero':'#C47A0A','pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado] || '#666';
-      var estadoLbl = {'pendiente_companero':'Espera compañero','pendiente_gerente':'En espera de aprobación','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
-      var tipoLbl = s.tipo==='alta' ? '➕ Alta' : '❌ Baja';
-      return '<div style="border:1px solid var(--b);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:#fff">'
-        + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12.5px">'+tipoLbl+' · '+esc_(s.nombre)+'</b><span style="font-size:10.5px;color:#fff;background:'+estadoCol+';padding:2px 7px;border-radius:5px;font-weight:700">'+estadoLbl+'</span></div>'
-        + '<div style="font-size:11px;color:var(--t3);margin-top:3px">Compañero: '+esc_(s.rep_companero)+' · '+fmtShort(s.created_at.slice(0,10))+'</div>'
-        + (s.motivo?'<div style="font-size:11px;color:var(--t2);margin-top:3px"><i>'+esc_(s.motivo)+'</i></div>':'')
-        + (s.rechazo_motivo?'<div style="font-size:11px;color:#C0392B;margin-top:3px"><b>Rechazo:</b> '+esc_(s.rechazo_motivo)+'</div>':'')
-        + '</div>';
-    }).join('');
+    html += mias.slice(0,15).map(function(s){ return _solicCardHTML(s, 'Compañero: '+s.rep_companero); }).join('');
+  }
+  // Sección 3: solicitudes de mi compañero que ya confirme/rechace (para ver el resultado final)
+  if (delComp.length){
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:.9rem 0 .4rem 0"><div style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.03em">👥 Solicitudes de tu compañero ('+delComp.length+')</div>'
+      + (!mias.length && resueltasVisibles>0 ? '<button onclick="limpiarSolicitudesLeidas()" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11px;cursor:pointer;font-family:var(--f)">🧹 Limpiar leídas ('+resueltasVisibles+')</button>' : '')
+      + '</div>';
+    html += delComp.slice(0,15).map(function(s){ return _solicCardHTML(s, 'Solicita: '+s.rep_solicita); }).join('');
   }
   if (!html) html = '<div style="font-size:12px;color:var(--t3);padding:.5rem 0">Sin solicitudes.</div>';
   el.innerHTML = html;
