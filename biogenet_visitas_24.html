@@ -2250,7 +2250,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-12-093331';
+const APP_VERSION = '2026-10-13-090526';
 
 async function checkForUpdates() {
   try {
@@ -4080,8 +4080,10 @@ function renderGerMarketing(){
       +   '<div style="text-align:center;padding:8px;background:#DCFCE7;border-radius:6px"><div style="font-size:20px;font-weight:700;color:#1A5C3A">'+ent+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Entregados</div></div>'
       +   '<div style="text-align:center;padding:8px;background:'+(sel>0?'#FEF3C7':'#F1F5F9')+';border-radius:6px"><div style="font-size:20px;font-weight:700;color:'+(sel>0?'#C47A0A':'#1A5C3A')+'">'+(sel>0?sel:'✓')+'</div><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Por entregar</div></div>'
       + '</div>'
+      + _mktPorMesHtml(asigs)
       + '<div style="margin-bottom:8px">'+repsHtml+'</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+      +   '<button onclick="editarCampana('+c.id+')" style="padding:8px 12px;border-radius:6px;border:1px solid #1565C0;background:#fff;color:#1565C0;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">✏️ Editar</button>'
       +   '<button onclick="exportMarketingExcel('+c.id+')" style="padding:8px 12px;border-radius:6px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">📥 Excel</button>'
       +   (c.estado==='activa' ? '<button onclick="cerrarCampana('+c.id+')" style="padding:8px 12px;border-radius:6px;border:1px solid #C47A0A;background:#fff;color:#C47A0A;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">🔒 Cerrar campaña</button>' : '<button onclick="reactivarCampana('+c.id+')" style="padding:8px 12px;border-radius:6px;border:1px solid #1A5C3A;background:#fff;color:#1A5C3A;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">🔓 Reactivar</button>')
       +   '<button onclick="eliminarCampana('+c.id+')" style="padding:8px 12px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">🗑 Eliminar</button>'
@@ -4107,6 +4109,45 @@ async function crearCampana(){
     renderGerMarketing();
     if (typeof showToast==='function') showToast('✓ Campaña creada');
   } catch(e){ alert('Error: '+e.message); }
+}
+// Entregas agrupadas por mes: una misma campaña puede durar varios meses
+// (p. ej. organos) y asi se ve cuanto se entrego en cada uno
+function _mktPorMesHtml(asigs){
+  var MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var porMes = {};
+  asigs.forEach(function(a){
+    if (a.estado !== 'entregado' || !a.fecha_entrega) return;
+    var k = String(a.fecha_entrega).slice(0,7);
+    porMes[k] = (porMes[k]||0) + 1;
+  });
+  var ks = Object.keys(porMes).sort();
+  if (!ks.length) return '';
+  return '<div style="font-size:11.5px;color:var(--t2);margin-bottom:8px"><b>Entregados por mes:</b> '
+    + ks.map(function(k){ return MES[parseInt(k.slice(5,7),10)-1] + ' ' + k.slice(2,4) + ': <b>' + porMes[k] + '</b>'; }).join(' · ')
+    + '</div>';
+}
+async function editarCampana(id){
+  var c = MARKETING_CAMPANAS.find(function(x){ return x.id === id; });
+  if (!c) return;
+  var nombre = prompt('Nombre de la campaña:', c.nombre || '');
+  if (nombre === null) return;
+  nombre = nombre.trim();
+  if (!nombre){ alert('El nombre es obligatorio.'); return; }
+  var fin = prompt('Fecha de cierre (AAAA-MM-DD). Déjalo vacío si no tiene fecha:', c.fecha_fin || '');
+  if (fin === null) return;
+  fin = fin.trim();
+  if (fin && !/^\d{4}-\d{2}-\d{2}$/.test(fin)){ alert('Fecha inválida. Usa el formato AAAA-MM-DD, por ejemplo 2026-11-06.'); return; }
+  var cupo = prompt('Cupo total de unidades. Déjalo vacío si no tiene cupo:', c.cantidad_total || '');
+  if (cupo === null) return;
+  cupo = cupo.trim();
+  if (cupo && !/^\d+$/.test(cupo)){ alert('El cupo debe ser un número entero.'); return; }
+  var body = { nombre: nombre, fecha_fin: fin || null, cantidad_total: cupo ? parseInt(cupo, 10) : null };
+  try {
+    await sbRequest('PATCH', '/marketing_campanas?id=eq.' + id, body);
+    Object.assign(c, body);
+    renderGerMarketing();
+    if (typeof showToast==='function') showToast('✓ Campaña actualizada');
+  } catch(e){ alert('Error: ' + e.message); }
 }
 async function cerrarCampana(id){
   if (!confirm('¿Cerrar campaña? Los reps ya no podrán seleccionar más médicos, pero podrán seguir marcando entregas de los ya seleccionados.')) return;
