@@ -2250,7 +2250,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-13-090526';
+const APP_VERSION = '2026-10-13-091205';
 
 async function checkForUpdates() {
   try {
@@ -4033,11 +4033,30 @@ function renderMarketingList(){
           actCell = '<button onclick="mktEntregarUno('+a.id+')" title="Marcar como entregado" style="padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f);margin-right:3px">✓ Entregar</button>'
             + '<button onclick="mktDesmarcar('+a.id+')" title="Quitar de la campaña" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--f)">🗑</button>';
         }
-        return '<tr style="background:'+bg+'"><td style="padding:9px 11px;border-bottom:1px solid #EEF3F0"><div style="font-weight:700">'+esc_(m.nombre)+'</div><div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc_((m.especialidad||'')+' · '+(m.ciudad||''))+'</div></td>'
+        return '<tr style="background:'+bg+'"><td style="padding:9px 11px;border-bottom:1px solid #EEF3F0"><div style="font-weight:700">'+esc_(m.nombre)+'</div><div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc_((m.especialidad||'')+' · '+(m.ciudad||''))+'</div>'+_mktHistorialHtml(camp.id, m.nombre)+'</td>'
           + '<td style="padding:9px 11px;border-bottom:1px solid #EEF3F0">'+estCell+'</td>'
           + '<td style="padding:9px 11px;border-bottom:1px solid #EEF3F0;text-align:right;white-space:nowrap">'+actCell+'</td></tr>';
       }).join('')
     + '</tbody></table></div>';
+}
+
+// Obsequios que el medico ya recibio (o tiene asignados) en OTRAS campañas.
+// No bloquea: le da al visitador el dato para decidir a quien entregar.
+function _mktHistorialHtml(campId, medico){
+  var medU = (medico||'').toUpperCase().trim();
+  var otras = (MARKETING_ASIGNACIONES||[]).filter(function(a){
+    return a.campana_id !== campId && (a.medico||'').toUpperCase().trim() === medU;
+  });
+  if (!otras.length) return '';
+  return otras.map(function(a){
+    var c = (MARKETING_CAMPANAS||[]).find(function(x){ return x.id === a.campana_id; });
+    var nom = c ? c.nombre : 'otra campaña';
+    var txt = a.estado === 'entregado'
+      ? 'Ya recibió: ' + nom + (a.fecha_entrega ? ' (' + fmtShort(a.fecha_entrega) + ')' : '')
+      : 'Asignado en: ' + nom + ' (pendiente de entrega)';
+    if (a.rep && a.rep !== CU) txt += ' · por ' + a.rep;
+    return '<div style="margin-top:4px;display:inline-block;font-size:10.5px;font-weight:600;color:#92400E;background:#FEF3C7;border:1px solid #FCD34D;border-radius:5px;padding:2px 6px">🎁 ' + esc_(txt) + '</div>';
+  }).join('<br>');
 }
 
 // ── GERENTE: Marketing (CRUD campañas + consolidado + Excel) ──
