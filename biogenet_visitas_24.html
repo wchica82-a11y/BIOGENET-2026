@@ -2250,7 +2250,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-13-130106';
+const APP_VERSION = '2026-10-13-134245';
 
 async function checkForUpdates() {
   try {
@@ -3162,8 +3162,8 @@ function renderGerSolicitudes(){
     if (fil) list = list.filter(function(s){ return s.estado === fil; });
     if (!list.length){ el.innerHTML = '<div class="empty"><div class="empty-ico">📭</div><p>Sin solicitudes de médicos con este filtro.</p></div>'; return; }
     el.innerHTML = list.map(function(s){
-      var col = s.tipo==='alta' ? '#1A5C3A' : '#C0392B';
-      var lbl = s.tipo==='alta' ? '➕ ALTA' : '❌ BAJA';
+      var col = s.tipo==='alta' ? '#1A5C3A' : s.tipo==='modificacion' ? '#1565C0' : '#C0392B';
+      var lbl = s.tipo==='alta' ? '➕ ALTA' : s.tipo==='modificacion' ? '✏️ MODIFICAR' : '❌ BAJA';
       var estCol = {'pendiente_companero':'#C47A0A','pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado]||'#666';
       var estLbl = {'pendiente_companero':'Espera compañero','pendiente_gerente':'⏳ ESPERA TU APROBACIÓN','aprobada':'✓ Aprobada','rechazada':'✕ Rechazada'}[s.estado]||s.estado;
       var acciones = '';
@@ -3181,6 +3181,7 @@ function renderGerSolicitudes(){
         +   '<span style="font-size:10.5px;color:#fff;background:'+estCol+';padding:3px 8px;border-radius:5px;font-weight:700;white-space:nowrap">'+estLbl+'</span>'
         + '</div>'
         + '<div style="font-size:11.5px;color:var(--t3);margin-bottom:6px">Solicita <b>'+esc_(s.rep_solicita)+'</b> · Compañero <b>'+esc_(s.rep_companero)+'</b> · '+(s.created_at?fmtShort(s.created_at.slice(0,10)):'')+(s.comp_aprobado_at?' · Confirmada '+fmtShort(s.comp_aprobado_at.slice(0,10)):'')+'</div>'
+        + (s.tipo==='modificacion' ? _modCambiosHTML(s) : '')
         + (s.motivo?'<div style="font-size:12px;padding:7px 10px;background:#FEF3C7;border-radius:6px;color:var(--t1)"><b>Motivo:</b> '+esc_(s.motivo)+'</div>':'')
         + (s.rechazo_motivo?'<div style="font-size:12px;padding:7px 10px;background:#FEE2E2;border-radius:6px;color:#C0392B;margin-top:6px"><b>Rechazo ('+esc_(s.rechazado_por||'')+'):</b> '+esc_(s.rechazo_motivo)+'</div>':'')
         + acciones
@@ -3329,7 +3330,7 @@ async function loadPanelOverrides(){
     if (!REP_PAIRS || Object.keys(REP_PAIRS).length === 0){
       if (typeof loadRepPairs === 'function') { try { await loadRepPairs(); } catch(e){} }
     }
-    var rows = await sbRequest('GET', '/panel_overrides?order=created_at.asc&limit=1000');
+    var rows = await sbRequest('GET', '/panel_overrides?order=created_at.asc,id.asc&limit=1000');
     PANEL_OVERRIDES = rows || [];
     applyPanelOverrides();
   } catch(e){ console.warn('loadPanelOverrides falló:', e.message); }
@@ -3361,9 +3362,13 @@ async function loadPanelReplacement(){
         especialidad: r.especialidad||'',
         ciudad: r.ciudad||'',
         direccion: r.direccion||'',
-        tipo: r.tipo||''
+        tipo: r.tipo||'',
+        cedula: r.cedula||'',
+        provincia: r.provincia||'',
+        zona: r.zona||''
       });
     });
+    PANEL_DESDE_BD = true;
     console.log('PANEL reemplazado desde panel_costa: '+all.length+' médicos');
   } catch(e){ console.warn('loadPanelReplacement falló:', e.message); }
 }
@@ -3397,7 +3402,12 @@ function applyPanelOverrides(){
             especialidad: o.especialidad || '',
             ciudad: o.ciudad || '',
             direccion: o.direccion || '',
-            tipo: o.tipo_medico || ''
+            tipo: o.tipo_medico || '',
+            cedula: o.cedula || '',
+            provincia: o.provincia || '',
+            zona: o.zona || '',
+            apellidos: o.apellidos || '',
+            nombres: o.nombres || ''
           });
         }
       } else if (o.accion === 'remove'){
@@ -3431,6 +3441,7 @@ async function submitSolicitud(tipo, data){
     motivo: (data.motivo||'').trim(),
     estado: 'pendiente_companero'
   };
+  if (tipo === 'modificacion') payload.nombre_original = data.nombre_original || '';
   if (!payload.nombre){ alert('Falta el nombre del médico.'); return false; }
   if (tipo==='baja' && !payload.motivo){ alert('El motivo es obligatorio para dar de baja a un médico.'); return false; }
   try {
@@ -3477,6 +3488,7 @@ async function rechazarSolicitud(id, quien){
 async function gerenteAprobarSolicitud(id){
   var s = (PANEL_SOLICITUDES||[]).find(function(x){ return x.id === id; });
   if (!s){ alert('Solicitud no encontrada.'); return; }
+  if (s.tipo === 'modificacion') return gerenteAprobarModificacion(s);
   if (!confirm('¿Aprobar solicitud de '+s.tipo+' de '+s.nombre+' para '+s.rep_solicita+'?')) return;
   try {
     var override = {
@@ -3506,6 +3518,233 @@ async function gerenteAprobarSolicitud(id){
     if (typeof renderGerSolicitudes==='function') renderGerSolicitudes();
     if (typeof showToast==='function') showToast('✅ Aprobado. Cambio aplicado en vivo.');
   } catch(e){ alert('Error: '+e.message); }
+}
+
+// ── MODIFICAR / COMPLETAR DATOS DE UN MÉDICO DEL PANEL ──
+// El visitador corrige o completa los datos (nombre, cédula, dirección...).
+// La solicitud sigue el mismo camino que un alta: compañero → gerencia.
+// Al aprobarse se cambia el médico en el panel de los dos compañeros y, si
+// cambió el nombre, también su historial (visitas, obsequios, GPS).
+var PANEL_DESDE_BD = false;   // solo se exige completar si el panel vino de la base (trae cédula)
+var _MOD_ENVIADO = {};        // médicos con solicitud enviada en esta sesión
+
+function _espLista(){
+  var sel = document.getElementById('sa-esp');
+  if (!sel) return [];
+  return Array.prototype.map.call(sel.options, function(o){ return o.value || o.textContent; })
+    .filter(function(x){ return x && x.indexOf('—') < 0; });
+}
+// Excel borró el 0 inicial de muchas cédulas (09...): con 9 dígitos se completa
+function _cedNorm(c){
+  var d = String(c||'').replace(/\D/g, '');
+  return d.length === 9 ? '0' + d : d;
+}
+function medFaltantes(m){
+  var f = [];
+  if (_cedNorm(m.cedula).length !== 10) f.push('cédula');
+  var nombreOk = (m.apellidos && m.nombres) ? true : String(m.nombre||'').trim().split(/\s+/).length >= 4;
+  if (!nombreOk) f.push('2 apellidos y 2 nombres');
+  if (String(m.direccion||'').trim().length < 15) f.push('dirección completa');
+  if (_espLista().indexOf(String(m.especialidad||'').trim().toUpperCase()) < 0) f.push('especialidad');
+  if (!String(m.ciudad||'').trim()) f.push('ciudad');
+  return f;
+}
+function _modPendiente(nombre){
+  var n = String(nombre||'').toUpperCase().trim();
+  var reps = repYCompanero(CU);
+  return (PANEL_SOLICITUDES||[]).some(function(s){
+    return s.tipo === 'modificacion'
+      && String(s.nombre_original||'').toUpperCase().trim() === n
+      && (s.estado === 'pendiente_companero' || s.estado === 'pendiente_gerente')
+      && reps.indexOf(s.rep_solicita) >= 0;
+  });
+}
+function medDebeCompletar(m){
+  if (!m || !PANEL_DESDE_BD) return false;
+  if (!REP_PAIRS || !REP_PAIRS[CU]) return false;   // sin compañero no puede enviar solicitudes
+  if (_MOD_ENVIADO[String(m.nombre||'').toUpperCase().trim()]) return false;
+  if (!medFaltantes(m).length) return false;
+  return !_modPendiente(m.nombre);
+}
+function _medModBtn(m){
+  var nomJs = (m.nombre||'').replace(/\\/g,'\\\\').replace(/'/g, "\\'");
+  if (_modPendiente(m.nombre)) {
+    return '<span title="Solicitud de modificación en revisión" style="display:inline-block;padding:6px 8px;border-radius:6px;background:#EEF4FF;border:1px solid #90CAF9;color:#1565C0;font-size:11px;font-weight:700;margin-left:4px">⏳ En revisión</span>';
+  }
+  var falta = PANEL_DESDE_BD ? medFaltantes(m) : [];
+  return '<button onclick="openModMedicoPorNombre(\'' + nomJs + '\')" title="' + (falta.length ? 'Faltan datos: ' + falta.join(', ') : 'Corregir datos de este médico') + '" '
+    + 'style="display:inline-block;padding:6px 8px;border-radius:6px;background:#fff;border:1px solid ' + (falta.length ? '#C47A0A' : '#1565C0') + ';color:' + (falta.length ? '#C47A0A' : '#1565C0') + ';font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;font-family:var(--f)">'
+    + (falta.length ? '⚠️ Completar' : '✏️ Datos') + '</button>';
+}
+function openModMedicoPorNombre(nombre){
+  var m = (PANEL[CU]||[]).find(function(x){ return x.nombre === nombre; });
+  if (m) openModMedico(m, 'panel');
+}
+
+var _modCtx = null;
+function openModMedico(m, modo, onDone){
+  _modCtx = { m: m, modo: modo, onDone: onDone || null };
+  var old = document.getElementById('modal-mod-med'); if (old) old.remove();
+  var palabras = String(m.nombre||'').trim().split(/\s+/);
+  var ape = m.apellidos || palabras.slice(0, 2).join(' ');
+  var nom = m.nombres || palabras.slice(2).join(' ');
+  var falta = medFaltantes(m);
+  var espOpts = '<option value="">— Selecciona especialidad * —</option>' + _espLista().map(function(e){
+    return '<option' + (e === String(m.especialidad||'').trim().toUpperCase() ? ' selected' : '') + '>' + esc_(e) + '</option>';
+  }).join('');
+  var inp = 'padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;width:100%;box-sizing:border-box';
+  var mark = function(k){ return falta.indexOf(k) >= 0 ? ';border:2px solid #C0392B' : ''; };
+  var lbl = function(t){ return '<label style="font-size:11.5px;font-weight:600;color:var(--t2);margin-top:2px">' + t + '</label>'; };
+  var div = document.createElement('div');
+  div.id = 'modal-mod-med';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  div.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:1.1rem;max-width:460px;width:100%;max-height:90vh;overflow:auto">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">'
+    +   '<h3 style="font-size:16px;font-weight:700;color:#1565C0;margin:0">' + (modo === 'reporte' ? '⚠️ Completa los datos del médico' : '✏️ Modificar datos del médico') + '</h3>'
+    +   '<button onclick="closeModMedico()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#666">&times;</button></div>'
+    + '<div style="font-size:12px;color:var(--t2);margin-bottom:.5rem"><b>' + esc_(m.nombre) + '</b></div>'
+    + (falta.length ? '<div style="font-size:12px;color:#C0392B;background:#FEE2E2;border-radius:6px;padding:7px 9px;margin-bottom:.6rem"><b>Falta:</b> ' + falta.join(', ') + '</div>' : '')
+    + (modo === 'reporte' ? '<p style="font-size:11.5px;color:var(--t3);margin:0 0 .6rem 0">Para reportar a este médico primero completa su información. La corrección pasa a tu compañero y queda en espera de aprobación; la visita se registra ahora mismo.</p>'
+                          : '<p style="font-size:11.5px;color:var(--t3);margin:0 0 .6rem 0">Corrige lo que esté mal. La solicitud pasa primero a tu compañero para confirmar, luego queda en espera de aprobación final.</p>')
+    + '<div style="display:flex;flex-direction:column;gap:6px">'
+    +   lbl('Apellidos (2 apellidos) *') + '<input id="mm-ape" value="' + esc_(ape) + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
+    +   lbl('Nombres (2 nombres) *') + '<input id="mm-nom" value="' + esc_(nom) + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
+    +   lbl('Cédula (10 dígitos) *') + '<input id="mm-ced" inputmode="numeric" maxlength="10" value="' + esc_(_cedNorm(m.cedula)) + '" style="' + inp + mark('cédula') + '">'
+    +   lbl('Especialidad *') + '<select id="mm-esp" style="' + inp + mark('especialidad') + '">' + espOpts + '</select>'
+    +   lbl('Provincia') + '<input id="mm-prov" value="' + esc_(m.provincia||'') + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + '">'
+    +   lbl('Ciudad *') + '<input id="mm-ciu" value="' + esc_(m.ciudad||'') + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('ciudad') + '">'
+    +   lbl('Dirección completa (calle, número, referencia) *') + '<input id="mm-dir" value="' + esc_(m.direccion||'') + '" style="' + inp + mark('dirección completa') + '">'
+    +   lbl('Tipo') + '<select id="mm-tipo" style="' + inp + '"><option value="CIU"' + (m.tipo === 'GIR' ? '' : ' selected') + '>Ciudad (CIU)</option><option value="GIR"' + (m.tipo === 'GIR' ? ' selected' : '') + '>Gira (GIR)</option></select>'
+    +   lbl('Zona') + '<input id="mm-zona" value="' + esc_(m.zona||'') + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + '">'
+    +   lbl('Motivo' + (modo === 'reporte' ? '' : ' *')) + '<textarea id="mm-mot" rows="2" style="' + inp + '" placeholder="Ej: el segundo apellido estaba mal escrito">' + (modo === 'reporte' ? 'Completar datos del panel' : '') + '</textarea>'
+    + '</div>'
+    + '<div id="mm-err" style="display:none;font-size:12px;color:#C0392B;margin-top:8px"></div>'
+    + '<button id="mm-btn" onclick="submitModMedico()" style="width:100%;margin-top:12px;padding:11px;border-radius:8px;border:none;background:#1565C0;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--f)">'
+    +   (modo === 'reporte' ? 'Enviar datos y registrar visita' : 'Enviar solicitud') + '</button>'
+    + '</div>';
+  document.body.appendChild(div);
+}
+function closeModMedico(){ var el = document.getElementById('modal-mod-med'); if (el) el.remove(); _modCtx = null; }
+
+async function submitModMedico(){
+  if (!_modCtx) return;
+  var m = _modCtx.m, modo = _modCtx.modo, onDone = _modCtx.onDone;
+  var val = function(id){ return (document.getElementById(id).value || '').trim(); };
+  var errEl = document.getElementById('mm-err');
+  var fail = function(t){ errEl.style.display = 'block'; errEl.textContent = '⚠️ ' + t; };
+  var ape = val('mm-ape').toUpperCase().replace(/\s+/g, ' '), nom = val('mm-nom').toUpperCase().replace(/\s+/g, ' ');
+  var ced = _cedNorm(val('mm-ced')), esp = val('mm-esp'), ciu = val('mm-ciu').toUpperCase(), dir = val('mm-dir');
+  var mot = val('mm-mot');
+  if (!ape || !nom) return fail('Escribe apellidos y nombres.');
+  if (ced.length !== 10) return fail('La cédula debe tener 10 dígitos.');
+  if (!esp) return fail('Selecciona la especialidad de la lista.');
+  if (!ciu) return fail('Escribe la ciudad.');
+  if (dir.length < 15) return fail('Escribe la dirección completa (calle, número y referencia).');
+  if (modo !== 'reporte' && !mot) return fail('Escribe el motivo del cambio.');
+  if ((ape.split(' ').length < 2 || nom.split(' ').length < 2) &&
+      !confirm('El médico debería tener 2 apellidos y 2 nombres.\n\nApellidos: ' + ape + '\nNombres: ' + nom + '\n\n¿Es correcto así (por ejemplo, solo tiene un nombre)?')) return;
+  var nuevo = ape + ' ' + nom;
+  var data = {
+    nombre: nuevo, apellidos: ape, nombres: nom, especialidad: esp,
+    provincia: val('mm-prov').toUpperCase(), ciudad: ciu, direccion: dir,
+    tipo_medico: val('mm-tipo'), zona: val('mm-zona').toUpperCase(), cedula: ced,
+    motivo: mot || 'Completar datos del panel', nombre_original: m.nombre
+  };
+  if (modo !== 'reporte') {
+    var igual = nuevo === String(m.nombre||'').toUpperCase().trim() && ced === _cedNorm(m.cedula)
+      && esp === String(m.especialidad||'').toUpperCase().trim() && ciu === String(m.ciudad||'').toUpperCase().trim()
+      && dir === String(m.direccion||'').trim() && data.tipo_medico === (m.tipo||'CIU')
+      && data.provincia === String(m.provincia||'').toUpperCase().trim() && data.zona === String(m.zona||'').toUpperCase().trim();
+    if (igual) return fail('No cambiaste ningún dato.');
+  }
+  var btn = document.getElementById('mm-btn');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  var ok = await submitSolicitud('modificacion', data);
+  var key = String(m.nombre||'').toUpperCase().trim();
+  if (!ok) {
+    btn.disabled = false; btn.textContent = modo === 'reporte' ? 'Enviar datos y registrar visita' : 'Enviar solicitud';
+    // Una falla técnica no puede dejar al visitador sin reportar
+    if (modo === 'reporte' && confirm('No se pudo enviar la corrección de datos. ¿Registrar la visita de todos modos?')) {
+      _MOD_ENVIADO[key] = true; closeModMedico(); if (onDone) onDone();
+    }
+    return;
+  }
+  _MOD_ENVIADO[key] = true;
+  closeModMedico();
+  try { if (typeof renderPanelList === 'function') renderPanelList(); } catch(e){}
+  if (onDone) onDone();
+}
+
+// Cambios propuestos: valor actual → valor nuevo
+function _modCambiosHTML(s){
+  var orig = String(s.nombre_original||'');
+  var cur = null;
+  repYCompanero(s.rep_solicita).some(function(r){
+    cur = (PANEL[r]||[]).find(function(x){ return String(x.nombre||'').toUpperCase().trim() === orig.toUpperCase().trim(); }) || null;
+    return !!cur;
+  });
+  var filas = [
+    ['Nombre', orig, s.nombre], ['Cédula', cur ? _cedNorm(cur.cedula) : '', s.cedula],
+    ['Especialidad', cur ? cur.especialidad : '', s.especialidad], ['Provincia', cur ? cur.provincia : '', s.provincia],
+    ['Ciudad', cur ? cur.ciudad : '', s.ciudad], ['Dirección', cur ? cur.direccion : '', s.direccion],
+    ['Tipo', cur ? cur.tipo : '', s.tipo_medico], ['Zona', cur ? cur.zona : '', s.zona]
+  ];
+  var html = filas.map(function(f){
+    var a = String(f[1]||'').trim(), b = String(f[2]||'').trim();
+    if (a.toUpperCase() === b.toUpperCase()) return '';
+    return '<div><b>' + f[0] + ':</b> ' + (a ? '<span style="text-decoration:line-through;color:#999">' + esc_(a) + '</span> → ' : '') + '<b style="color:#1565C0">' + esc_(b || '(vacío)') + '</b></div>';
+  }).join('');
+  if (!html) html = '<div>Sin cambios en los datos.</div>';
+  return '<div style="font-size:11.5px;line-height:1.5;margin:6px 0;padding:7px 9px;background:#EEF4FF;border-radius:6px;color:var(--t1)">'
+    + (orig && orig.toUpperCase() !== String(s.nombre||'').toUpperCase() ? '' : '<div><b>Médico:</b> ' + esc_(orig) + '</div>') + html + '</div>';
+}
+
+// Gerente: aplica la modificación en el panel de la pareja y, si cambió el
+// nombre, pasa el historial al nombre nuevo para no perder cobertura.
+async function gerenteAprobarModificacion(s){
+  var orig = String(s.nombre_original||'').trim();
+  if (!orig){ alert('A esta solicitud le falta el nombre original del médico; no se puede aplicar.'); return; }
+  var nuevo = String(s.nombre||'').trim();
+  var renombra = orig.toUpperCase() !== nuevo.toUpperCase();
+  var reps = repYCompanero(s.rep_solicita);
+  if (!confirm('¿Aprobar la modificación de datos de ' + orig + '?\n\nSe actualizará en el panel de ' + reps.join(' y ') + '.' +
+      (renombra ? '\n\nEl nombre cambia a ' + nuevo + ': también se actualizará su historial de visitas, obsequios y GPS.' : ''))) return;
+  var base = { rep: s.rep_solicita, source_solicitud: s.id };
+  try {
+    // Un solo insert con las dos filas: es atómico y respeta el orden (quitar, luego agregar)
+    var rows = await sbRequest('POST', '/panel_overrides', [
+      Object.assign({ accion: 'remove', nombre: orig }, base),
+      Object.assign({ accion: 'add', nombre: nuevo, apellidos: s.apellidos||'', nombres: s.nombres||'',
+        especialidad: s.especialidad||'', provincia: s.provincia||'', ciudad: s.ciudad||'', direccion: s.direccion||'',
+        tipo_medico: s.tipo_medico||'', zona: s.zona||'', cedula: s.cedula||'' }, base)
+    ]);
+    var avisos = [];
+    if (renombra) {
+      var inReps = encodeURIComponent('in.(' + reps.map(function(r){ return '"' + r + '"'; }).join(',') + ')');
+      var o = encodeURIComponent(orig);
+      try { await sbRequest('PATCH', '/visits?medico=eq.' + o + '&rep=' + inReps, { medico: nuevo }); }
+      catch(e){ avisos.push('visitas: ' + e.message); }
+      try { await sbRequest('PATCH', '/marketing_asignaciones?medico=eq.' + o + '&rep=' + inReps, { medico: nuevo }); }
+      catch(e){ avisos.push('obsequios: ' + e.message); }
+      try {
+        var ub = await sbRequest('GET', '/ubicaciones?tipo=eq.medico&nombre=eq.' + o + '&rep=' + inReps + '&select=id,rep');
+        for (var i = 0; i < (ub||[]).length; i++) {
+          await sbRequest('PATCH', '/ubicaciones?id=eq.' + ub[i].id, { nombre: nuevo, ref_id: ub[i].rep + '||' + nuevo });
+        }
+      } catch(e){ avisos.push('GPS: ' + e.message); }
+      var oU = orig.toUpperCase();
+      (visits||[]).forEach(function(v){ if (reps.indexOf(v.rep) >= 0 && String(v.medico||'').toUpperCase().trim() === oU) v.medico = nuevo; });
+      (MARKETING_ASIGNACIONES||[]).forEach(function(a){ if (reps.indexOf(a.rep) >= 0 && String(a.medico||'').toUpperCase().trim() === oU) a.medico = nuevo; });
+    }
+    await sbRequest('PATCH', '/panel_solicitudes?id=eq.' + s.id, { estado: 'aprobada', gerente_aprobado_at: new Date().toISOString() });
+    (rows||[]).forEach(function(r){ PANEL_OVERRIDES.push(r); });
+    applyPanelOverrides();
+    await loadPanelSolicitudes();
+    if (typeof renderGerSolicitudes === 'function') renderGerSolicitudes();
+    if (avisos.length) alert('La modificación se aplicó en el panel, pero hubo problemas al actualizar el historial:\n\n' + avisos.join('\n'));
+    else if (typeof showToast === 'function') showToast('✅ Modificación aplicada' + (renombra ? ' (historial actualizado)' : ''));
+  } catch(e){ alert('Error: ' + e.message); }
 }
 
 // UI: modal alta médico
@@ -3572,10 +3811,11 @@ function limpiarSolicitudesLeidas(){
 function _solicCardHTML(s, quien){
   var estadoCol = {'pendiente_companero':'#C47A0A','pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado] || '#666';
   var estadoLbl = {'pendiente_companero':'Espera compañero','pendiente_gerente':'En espera de aprobación','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
-  var tipoLbl = s.tipo==='alta' ? '➕ Alta' : '❌ Baja';
+  var tipoLbl = s.tipo==='alta' ? '➕ Alta' : s.tipo==='modificacion' ? '✏️ Modificar' : '❌ Baja';
   return '<div style="border:1px solid var(--b);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:#fff">'
     + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12.5px">'+tipoLbl+' · '+esc_(s.nombre)+'</b><span style="font-size:10.5px;color:#fff;background:'+estadoCol+';padding:2px 7px;border-radius:5px;font-weight:700">'+estadoLbl+'</span></div>'
     + '<div style="font-size:11px;color:var(--t3);margin-top:3px">'+esc_(quien)+' · '+fmtShort(s.created_at.slice(0,10))+'</div>'
+    + (s.tipo==='modificacion' ? _modCambiosHTML(s) : '')
     + (s.motivo?'<div style="font-size:11px;color:var(--t2);margin-top:3px"><i>'+esc_(s.motivo)+'</i></div>':'')
     + (s.rechazo_motivo?'<div style="font-size:11px;color:#C0392B;margin-top:3px"><b>Rechazo:</b> '+esc_(s.rechazo_motivo)+'</div>':'')
     + '</div>';
@@ -3596,11 +3836,12 @@ function renderMisSolicitudes(){
   if (deComp.length){
     html += '<div style="font-size:12px;font-weight:700;color:#C47A0A;margin:.6rem 0 .4rem 0;text-transform:uppercase;letter-spacing:.03em">⏳ Pendientes de tu confirmación como compañero ('+deComp.length+')</div>';
     html += deComp.map(function(s){
-      var col = s.tipo==='alta' ? '#1A5C3A' : '#C0392B';
-      var lbl = s.tipo==='alta' ? '➕ ALTA' : '❌ BAJA';
+      var col = s.tipo==='alta' ? '#1A5C3A' : s.tipo==='modificacion' ? '#1565C0' : '#C0392B';
+      var lbl = s.tipo==='alta' ? '➕ ALTA' : s.tipo==='modificacion' ? '✏️ MODIFICAR DATOS' : '❌ BAJA';
       return '<div style="border:2px solid '+col+';border-radius:9px;padding:11px 13px;margin-bottom:8px;background:#fff">'
         + '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px"><b style="color:'+col+';font-size:12.5px">'+lbl+' — '+esc_(s.nombre)+'</b><span style="font-size:10.5px;color:var(--t3)">Solicita: '+esc_(s.rep_solicita)+'</span></div>'
         + '<div style="font-size:11.5px;color:var(--t2);margin-bottom:6px">'+esc_((s.especialidad||'')+(s.ciudad?' · '+s.ciudad:'')+(s.tipo_medico?' · '+s.tipo_medico:''))+(s.direccion?'<br>'+esc_(s.direccion):'')+'</div>'
+        + (s.tipo==='modificacion' ? _modCambiosHTML(s) : '')
         + (s.motivo?'<div style="font-size:12px;color:var(--t1);margin-bottom:8px;padding:6px 8px;background:#FEF3C7;border-radius:5px"><b>Motivo:</b> '+esc_(s.motivo)+'</div>':'')
         + '<div style="display:flex;gap:6px">'
         +   '<button onclick="confirmarSolicitudCompanero('+s.id+')" style="flex:1;padding:8px;border-radius:6px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--f)">✓ Confirmar</button>'
@@ -4339,7 +4580,7 @@ function renderPanelList(){
            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(m.ciudad||'-')+'</td>'
            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(m.especialidad||'-')+'</td>'
            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top"><div style="font-weight:700;color:var(--t1)">'+(m.nombre||'')+'</div><div style="color:var(--t3);font-size:11.5px;margin-top:2px">'+(m.direccion||'<i>Sin dirección</i>')+'</div></td>'
-           +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;text-align:right;white-space:nowrap">'+_pnlGpsBtn(u, m.nombre)+bajaBtn+'</td>'
+           +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;text-align:right;white-space:nowrap">'+_pnlGpsBtn(u, m.nombre)+_medModBtn(m)+bajaBtn+'</td>'
            +  '</tr>';
     });
     html += '</tbody></table></div>';
@@ -4839,6 +5080,12 @@ function guardar(){
         return;
       }
     }
+  }
+  // ── Datos del panel incompletos: pedir completarlos antes de reportar ──
+  // La solicitud va al compañero y a gerencia; la visita se registra igual.
+  if (!noEncontro && medDebeCompletar(selDoc)) {
+    openModMedico(selDoc, 'reporte', function(){ guardar(); });
+    return;
   }
   const prods=noEncontro?[]:getMuestras();
   const materiales=noEncontro?[]:getMateriales();
