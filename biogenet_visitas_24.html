@@ -2254,7 +2254,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-14-132742';
+const APP_VERSION = '2026-10-14-133020';
 
 async function checkForUpdates() {
   try {
@@ -4093,8 +4093,6 @@ async function loadMarketingAsignaciones(){
     MARKETING_ASIGNACIONES = all;
   } catch(e){ console.warn('loadMarketingAsignaciones falló:', e.message); MARKETING_ASIGNACIONES = []; }
 }
-// Los compañeros comparten panel: cualquiera de los dos puede entregar lo que el otro selecciono
-function _esMioOPareja(rep){ return CU && repYCompanero(CU).indexOf(rep) >= 0; }
 function _campanasActivas(){ return (MARKETING_CAMPANAS||[]).filter(function(c){ return c.estado === 'activa'; }); }
 function _findAsig(campId, medico){
   var medU = (medico||'').toUpperCase().trim();
@@ -4105,7 +4103,7 @@ function asignacionesPendientesPara(medico){
   var medU = (medico||'').toUpperCase().trim();
   var actIds = _campanasActivas().map(function(c){ return c.id; });
   return (MARKETING_ASIGNACIONES||[]).filter(function(a){
-    return _esMioOPareja(a.rep)
+    return a.rep === CU
       && (a.medico||'').toUpperCase().trim() === medU
       && a.estado === 'seleccionado'
       && actIds.indexOf(a.campana_id) >= 0;
@@ -4256,7 +4254,7 @@ function renderMarketingList(){
   panelMed.forEach(function(m){
     var a = _findAsig(camp.id, m.nombre);
     if (!a){ disp++; return; }
-    if (!_esMioOPareja(a.rep)){ tomOtro++; return; }
+    if (a.rep !== CU){ tomOtro++; return; }
     if (a.estado === 'entregado') ent++;
     else if (a.estado === 'seleccionado') sel++;
   });
@@ -4286,7 +4284,7 @@ function renderMarketingList(){
         if (!a){
           estCell = '<span style="color:var(--t3);font-size:11.5px">disponible</span>';
           actCell = '<button onclick="mktSeleccionar('+camp.id+','+JSON.stringify({nombre:m.nombre,especialidad:m.especialidad||'',ciudad:m.ciudad||''}).replace(/"/g,'&quot;')+')" style="padding:6px 12px;border-radius:6px;border:1px solid #8B5CF6;background:#F3E8FF;color:#8B5CF6;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f)">+ Seleccionar</button>';
-        } else if (!_esMioOPareja(a.rep)){
+        } else if (a.rep !== CU){
           estCell = '<span style="color:#666;font-size:11.5px">Asignado a <b>'+esc_(a.rep)+'</b></span>';
           actCell = '<span style="color:#999;font-size:11px">🔒 tomado</span>';
         } else if (a.estado === 'entregado'){
@@ -4297,7 +4295,6 @@ function renderMarketingList(){
           actCell = '<button onclick="mktEntregarUno('+a.id+')" title="Marcar como entregado" style="padding:6px 10px;border-radius:6px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:11.5px;cursor:pointer;font-family:var(--f);margin-right:3px">✓ Entregar</button>'
             + '<button onclick="mktDesmarcar('+a.id+')" title="Quitar de la campaña" style="padding:5px 9px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--f)">🗑</button>';
         }
-        if (a && a.rep !== CU && _esMioOPareja(a.rep)) estCell += '<div style="font-size:10.5px;color:var(--t3);margin-top:2px">Seleccionado por '+esc_(a.rep)+'</div>';
         return '<tr style="background:'+bg+'"><td style="padding:9px 11px;border-bottom:1px solid #EEF3F0"><div style="font-weight:700">'+esc_(m.nombre)+'</div><div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc_((m.especialidad||'')+' · '+(m.ciudad||''))+'</div>'+_mktHistorialHtml(camp.id, m.nombre)+'</td>'
           + '<td style="padding:9px 11px;border-bottom:1px solid #EEF3F0">'+estCell+'</td>'
           + '<td style="padding:9px 11px;border-bottom:1px solid #EEF3F0;text-align:right;white-space:nowrap">'+actCell+'</td></tr>';
@@ -5116,7 +5113,7 @@ function guardar(){
       if (cb.checked){
         var aid = parseInt(cb.getAttribute('data-asig-id'));
         if (aid){
-          mktMarcarEntregado(aid, 'Entregado en visita del '+v.fecha+' por '+CU).then(function(ok){
+          mktMarcarEntregado(aid, 'Entregado en visita del '+v.fecha).then(function(ok){
             if (ok) { try { renderMarketingList(); } catch(e){} }
           });
         }
