@@ -331,7 +331,7 @@ tr:hover td{background:var(--blue-light)}
 
 <nav>
   <div class="tab active" onclick="switchView('representantes',this)">DIFARE · Representantes</div>
-  <div class="tab" onclick="switchView('gpf',this)">GPF &middot; Representantes</div>
+  <div class="tab" onclick="switchView('gpf',this)">FEMSA &middot; Representantes</div>
   <div class="tab" onclick="switchView('stock-sinventa',this);renderStockSinVenta()">Stock sin venta</div>
 </nav>
 
@@ -420,7 +420,7 @@ tr:hover td{background:var(--blue-light)}
         </select>
       </div>
     </div>
-    <div class="sec-title">Representantes GPF <span class="count" id="g-cnt">—</span><span class="hint"> · clic → ver PDV</span></div>
+    <div class="sec-title">Representantes FEMSA <span class="count" id="g-cnt">—</span><span class="hint"> · clic → ver PDV</span></div>
     <div class="tbl-wrap"><div class="tbl-scroll">
       <table><thead><tr id="g-th"></tr></thead><tbody id="g-tb"></tbody></table>
     </div></div>
@@ -905,7 +905,7 @@ function openPDV(cod, pdvName, prefix){
 /* ── FILTRO POR MARCA ─────────────────────────────────────────────────
    Un mismo producto tiene varias presentaciones y cada una llega con un
    nombre distinto segun la cadena (DIFARE escribe "Kufer-q Forte
-   Capx140mgx30" y GPF "KUFER - Q FORTE CAPS. C/20 SUELTAS"). La marca se
+   Capx140mgx30" y FEMSA "KUFER - Q FORTE CAPS. C/20 SUELTAS"). La marca se
    deduce del nombre con estas reglas; cubren el 100% de los productos de
    ambas cadenas. Para agregar una marca nueva, sumar su regla aqui.     */
 var MARCA_REGLAS = [
