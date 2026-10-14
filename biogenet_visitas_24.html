@@ -2254,7 +2254,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-14-135607';
+const APP_VERSION = '2026-10-14-140516';
 
 async function checkForUpdates() {
   try {
@@ -5012,6 +5012,24 @@ function guardarFarm() {
     return;
   }
   errEl.style.display = 'none';
+
+  // ── GPS obligatorio (la primera vez por farmacia), igual que con médicos ──
+  try {
+    var _farmTieneGps = (typeof ubicHas === 'function') ? ubicHas('farmacia', CU, String(selFarm.cod)) : false;
+    var _farmGpsSesion = (typeof GPS_TEMP !== 'undefined' && GPS_TEMP.farmacia) ? true : false;
+    if (!_farmTieneGps && !_farmGpsSesion) {
+      errEl.style.display = 'block';
+      errEl.textContent = '📍 Captura la ubicación GPS de la farmacia antes de registrar la visita. Es obligatorio la primera vez.';
+      errEl.scrollIntoView({behavior:'smooth',block:'center'});
+      var _gpsFarmBox = document.getElementById('gps-farm');
+      if (_gpsFarmBox) {
+        _gpsFarmBox.style.outline = '2px solid #C0392B';
+        setTimeout(function(){ _gpsFarmBox.style.outline = ''; }, 3000);
+      }
+      if (typeof showToast==='function') showToast('📍 Falta capturar GPS de la farmacia');
+      return;
+    }
+  } catch(e){ /* si algo falla en la validación, no bloqueamos */ }
 
   var res = document.querySelector('#result-chips .chip.on')?.textContent || 'Contacto efectivo';
   var obj = document.querySelector('#farm-obj-chips .chip.on')?.textContent || '';
