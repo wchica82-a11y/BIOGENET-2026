@@ -2236,7 +2236,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-15-092229';
+const APP_VERSION = '2026-10-15-094622';
 
 async function checkForUpdates() {
   try {
@@ -3904,7 +3904,7 @@ function normalizeFarmPanel(){
       var dir = String(f.dir||'').trim();
       f.pdv = ((f.cadena||'') + ' ' + cod).trim() + (dir && !/^nan$/i.test(dir) ? ' · ' + dir : '');
     });
-  });
+  });  _FARM_COD_CHOQUE = null;   // el panel cambió: recalcular códigos repetidos entre cadenas
 }
 normalizeFarmPanel();
 // Devuelve el rep dueño actual de una farmacia por cod, o null si no existe
@@ -4516,9 +4516,8 @@ async function initMisPaneles(){
 function _pnlHasGpsMed(rep, nombre){
   return ubicGetMed(rep, nombre);
 }
-function _pnlHasGpsFarm(cod){
-  if (!UBIC_NORM_IDX) rebuildUbicIndex();
-  return UBIC_NORM_IDX['farmacia:' + String(cod||'')] || null;
+function _pnlHasGpsFarm(f){
+  return ubicGetFarmaciaDe(f && f.cadena, f && f.cod);
 }
 function _pnlGpsBtn(u, nombre){
   if (u && u.lat && u.lng){
@@ -4589,7 +4588,7 @@ function renderPanelList(){
     flist.sort(function(a,b){
       return (a.ciudad||'').localeCompare(b.ciudad||'') || (a.cadena||'').localeCompare(b.cadena||'') || (a.pdv||'').localeCompare(b.pdv||'');
     });
-    var conGpsF = flist.filter(function(f){ return !!_pnlHasGpsFarm(f.cod); }).length;
+    var conGpsF = flist.filter(function(f){ return !!_pnlHasGpsFarm(f); }).length;
     if (info) info.innerHTML = '<b>'+flist.length+'</b> farmacias'+(qn?' (filtradas)':'')+' · <span style="color:#1A5C3A">'+conGpsF+'</span> con GPS';
     if (!flist.length){ cont.innerHTML = '<div class="card"><p style="font-size:12.5px;color:var(--t3);text-align:center;padding:1rem">No hay farmacias que coincidan.</p></div>'; return; }
     var html2 = '<div class="card" style="padding:0;overflow:hidden">';
@@ -4600,7 +4599,7 @@ function renderPanelList(){
           + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">PDV / Dirección</th>'
           + '</tr></thead><tbody>';
     flist.forEach(function(f, i){
-      var u = _pnlHasGpsFarm(f.cod);
+      var u = _pnlHasGpsFarm(f);
       var bg = i%2 ? '#FBFDFC' : '#fff';
       var codJs = String(f.cod||'').replace(/'/g, "\\'");
       var pdvJs = String(f.pdv||'').replace(/'/g, "\\'");
@@ -4997,7 +4996,7 @@ function guardarFarm() {
 
   // ── GPS obligatorio (la primera vez por farmacia), igual que con médicos ──
   try {
-    var _farmTieneGps = (typeof ubicHas === 'function') ? ubicHas('farmacia', CU, String(selFarm.cod)) : false;
+    var _farmTieneGps = (typeof ubicHas === 'function') ? ubicHas('farmacia', CU, selFarm) : false;
     var _farmGpsSesion = (typeof GPS_TEMP !== 'undefined' && GPS_TEMP.farmacia) ? true : false;
     if (!_farmTieneGps && !_farmGpsSesion) {
       errEl.style.display = 'block';
@@ -7037,7 +7036,7 @@ function asegurarUbicaciones(despues){
 function ubicGetFarm(cod){
   if (!UBIC_NORM_IDX) rebuildUbicIndex();
   var c = String(cod==null?'':cod).trim();
-  if (!c) return null;
+  if (!c || _codChoca(c)) return null;   // código usado por varias cadenas: no adivinar
   return UBIC_NORM_IDX['farmacia:' + c]
       || UBIC_NORM_IDX['farmacia:' + c.toUpperCase()]
       || UBIC_NORM_IDX['farmacia:' + c.replace(/^0+/,'')]   // por si viene con ceros a la izquierda
@@ -7072,7 +7071,7 @@ function diarioFarmRow(v){
       </div>
       <div style="text-align:right;white-space:nowrap">
         <div style="font-size:11px;color:var(--t3)">${fmtHoraEcuador(v.ts)}</div>
-        <div style="margin-top:4px">${btnUbicMaps(ubicGetFarm(v.farmacia_cod))}</div>
+        <div style="margin-top:4px">${btnUbicMaps(ubicGetFarmaciaDe(v.cadena, v.farmacia_cod))}</div>
       </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">
@@ -7132,7 +7131,7 @@ function openDiarioDetail(rep, fecha){
             <div style="font-size:13px;font-weight:500">🏪 ${v.farmacia||''}</div>
             <div style="font-size:11px;color:var(--t3)">${[v.cadena,v.ciudad,v.zona].filter(Boolean).join(' · ')}</div>
           </div>
-          ${btnUbicMaps(ubicGetFarm(v.farmacia_cod))}
+          ${btnUbicMaps(ubicGetFarmaciaDe(v.cadena, v.farmacia_cod))}
         </div>
         ${v.comentario?`<div style="font-size:12px;color:var(--t2);margin-top:3px">${v.comentario}</div>`:''}
       </div>`).join('')}
@@ -8085,7 +8084,33 @@ function ubicHas(tipo, rep, nombreOCod){
     return !!(UBIC_NORM_IDX['medico:' + (rep||'') + '||' + nn]
            || UBIC_NORM_IDX['medicoAny:' + nn]);
   }
-  return !!UBIC_NORM_IDX['farmacia:' + String(nombreOCod||'')];
+  if (nombreOCod && typeof nombreOCod === 'object') return !!ubicGetFarmaciaDe(nombreOCod.cadena, nombreOCod.cod);
+  return !!ubicGetFarm(nombreOCod);
+}
+// Varias cadenas usan los mismos números de código (el "33" es una Santa Martha,
+// una Keyla y una Super Económica). La ubicación de una farmacia se identifica
+// por CADENA + código; solo el código basta cuando ninguna otra cadena lo usa.
+function _normCad(c){ return String(c||'').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function farmUbicId(cadena, cod){ return _normCad(cadena) + '|' + String(cod==null?'':cod).trim(); }
+var _FARM_COD_CHOQUE = null;
+function _codChoca(cod){
+  if (!_FARM_COD_CHOQUE) {
+    var m = {};
+    Object.keys(FARM_PANEL||{}).forEach(function(r){ (FARM_PANEL[r]||[]).forEach(function(f){
+      var c = String(f.cod==null?'':f.cod).trim(); (m[c] = m[c] || {})[_normCad(f.cadena)] = 1;
+    }); });
+    _FARM_COD_CHOQUE = {};
+    Object.keys(m).forEach(function(c){ if (Object.keys(m[c]).length > 1) _FARM_COD_CHOQUE[c] = 1; });
+  }
+  return !!_FARM_COD_CHOQUE[String(cod==null?'':cod).trim()];
+}
+function ubicGetFarmaciaDe(cadena, cod){
+  if (!UBIC_NORM_IDX) rebuildUbicIndex();
+  var c = String(cod==null?'':cod).trim();
+  if (!c) return null;
+  return UBIC_NORM_IDX['farmaciaCC:' + farmUbicId(cadena, c)]
+      || UBIC_NORM_IDX['farmaciaCC:' + farmUbicId(cadena, c.replace(/^0+/,''))]
+      || ubicGetFarm(c);
 }
 // ¿Capturó ESTE rep la ubicación de ese médico? (no cuenta la del colega)
 function ubicHasPropia(rep, nombre){
@@ -8117,7 +8142,12 @@ function rebuildUbicIndex(){
         UBIC_NORM_IDX[kAny] = u;
       }
     } else if (u.tipo === 'farmacia') {
-      UBIC_NORM_IDX['farmacia:' + String(u.ref_id||'')] = u;
+      // ref_id nuevo = "CADENA|cod"; el anterior era solo el código
+      var ref = String(u.ref_id||''), codR = ref.indexOf('|') >= 0 ? ref.slice(ref.indexOf('|') + 1) : ref;
+      var kc = 'farmaciaCC:' + farmUbicId(u.cadena, codR), pc = UBIC_NORM_IDX[kc];
+      if (!pc || String(u.fecha||'') >= String(pc.fecha||'')) UBIC_NORM_IDX[kc] = u;
+      var kl = 'farmacia:' + codR, pl = UBIC_NORM_IDX[kl];
+      if (!pl || String(u.fecha||'') >= String(pl.fecha||'')) UBIC_NORM_IDX[kl] = u;
     }
   });
 }
@@ -8227,7 +8257,7 @@ function guardarUbicacion(tipo){
       fecha:new Date().toISOString() };
   } else {
     if (!selFarm || !GPS_TEMP.farmacia) return;
-    refId = String(selFarm.cod);
+    refId = farmUbicId(selFarm.cadena, selFarm.cod);
     payload = { tipo:'farmacia', ref_id:refId, nombre:selFarm.pdv, rep:CU,
       ciudad:selFarm.ciudad||null, especialidad:null,
       cadena:selFarm.cadena||null, direccion:selFarm.dir||null,
@@ -8258,15 +8288,14 @@ function gpsOnSelect(tipo){
   GPS_TEMP[tipo] = null;
   var refId = tipo==='medico'
     ? (selDoc ? medRefId(CU, selDoc.nombre) : null)
-    : (selFarm ? String(selFarm.cod) : null);
+    : (selFarm ? farmUbicId(selFarm.cadena, selFarm.cod) : null);
   // Buscar primero por clave exacta; si no, por clave normalizada
   var existing = refId ? UBIC_CACHE[ubicKey(tipo,refId)] : null;
   if (!existing) {
     if (tipo === 'medico' && selDoc) {
       existing = ubicGetMed(CU, selDoc.nombre);
     } else if (tipo === 'farmacia' && selFarm) {
-      var k2 = 'farmacia:' + String(selFarm.cod);
-      existing = (UBIC_NORM_IDX || {})[k2] || null;
+      existing = ubicGetFarmaciaDe(selFarm.cadena, selFarm.cod);
     }
   }
   box.style.display = '';
@@ -8319,7 +8348,7 @@ function renderGpsProgress(){
     if (ubicHasPropia(CU, d.nombre)) medCap++;
     else if (ubicHas('medico', CU, d.nombre)) medHered++;
   });
-  fpanel.forEach(function(f){ if(ubicHas('farmacia',null,String(f.cod))) farmCap++; });
+  fpanel.forEach(function(f){ if(ubicHas('farmacia',null,f)) farmCap++; });
   var medTot=panel.length, farmTot=fpanel.length;
   if (medTot+farmTot===0){ if(card) card.style.display='none'; return; }
   if (card) card.style.display='';

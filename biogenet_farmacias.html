@@ -1115,10 +1115,15 @@ async function abrirUbicacion(cod, pdvName){
     var searchCod = String(cod);
     var codClean = searchCod.startsWith('GPF') ? searchCod.substring(3) : searchCod;
     // Buscar por ref_id = cod OR ref_id = cod sin prefijo
-    var url = _UBIC_SUPABASE_URL + '/rest/v1/ubicaciones?tipo=eq.farmacia&or=(ref_id.eq.' + encodeURIComponent(searchCod) + ',ref_id.eq.' + encodeURIComponent(codClean) + ')&select=lat,lng,precision_m,fecha,nombre,rep,capturado_por&order=fecha.desc&limit=5';
+    var url = _UBIC_SUPABASE_URL + '/rest/v1/ubicaciones?tipo=eq.farmacia&or=(ref_id.eq.' + encodeURIComponent(searchCod) + ',ref_id.eq.' + encodeURIComponent(codClean) + ',ref_id.like.*' + encodeURIComponent('|' + codClean) + ')&select=lat,lng,precision_m,fecha,nombre,rep,capturado_por,cadena&order=fecha.desc&limit=20';
     var resp = await fetch(url, { headers: { 'apikey': _UBIC_SUPABASE_KEY, 'Authorization': 'Bearer ' + _UBIC_SUPABASE_KEY }});
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     var rows = await resp.json();
+    // Varias cadenas comparten números de código (Santa Martha, Keyla, Fybeca...):
+    // quedarse solo con las ubicaciones de la cadena de este tablero
+    var _nc = function(c){ return String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,''); };
+    var _grupo = isGpf ? ['FYBECA','SANASANA'] : ['DIFARE','CRUZAZUL','PHARMACYS'];
+    rows = (rows || []).filter(function(u){ return _grupo.indexOf(_nc(u.cadena)) >= 0; });
     if (!rows || !rows.length) {
       // Fallback: buscar por nombre PDV
       if (pdvName) {
