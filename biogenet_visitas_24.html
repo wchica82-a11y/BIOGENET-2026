@@ -836,34 +836,6 @@ textarea{resize:none;height:88px;line-height:1.5}
 
     <!-- MUESTRAS -->
     <div id="g-muestras" class="panel">
-      <!-- Carga masiva XLSX -->
-      <div class="card" style="background:#E8F4EE;border-color:#1A5C3A">
-        <div class="ctitle" style="color:#1A5C3A">📥 Carga masiva de asignaciones (XLSX)</div>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:.6rem">Sube un archivo Excel con columnas: <b>REPRESENTANTE</b>, <b>PRODUCTO</b>, <b>CANTIDAD MUESTRAS</b>. Se asignarán al <b>ciclo activo</b>.</p>
-        <div style="display:flex;align-items:center;gap:10px">
-          <button class="btn btn-p" onclick="document.getElementById('mu-xlsx-input').click()" style="width:auto;padding:10px 18px">
-            📂 Seleccionar archivo
-          </button>
-          <span id="mu-xlsx-status" style="font-size:13px;color:var(--t2)">— Ningún archivo cargado —</span>
-        </div>
-        <input type="file" id="mu-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="cargarMuestrasXLSX(this)">
-      </div>
-
-      <!-- Recepciones reportadas por los visitadores -->
-      <div class="card" style="background:#F0F7F2;border-color:#1A5C3A">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:.5rem">
-          <div class="ctitle" style="color:#1A5C3A;margin-bottom:0">📦 Recepciones reportadas por reps</div>
-          <button class="btn" onclick="exportMuestrasRecibidas()" style="padding:8px 14px;background:#1A5C3A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">📤 Exportar a Excel</button>
-        </div>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:.5rem">Lista de muestras que cada visitador reportó haber recibido de bodega. Filtra por ciclo:</p>
-        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
-          <select id="gmr-cycle-sel" onchange="renderGMuestrasRecibidas()" style="flex:1;min-width:200px;padding:8px;border:1.5px solid #cbd5d0;border-radius:8px;font-size:13px"></select>
-          <button class="btn" onclick="renderGMuestrasRecibidas()" style="padding:8px 14px;background:#fff;color:#1A5C3A;border:1.5px solid #1A5C3A;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px">🔄 Refrescar</button>
-        </div>
-        <div id="gmr-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:12px"></div>
-        <div id="gmr-list" style="max-height:500px;overflow:auto"></div>
-      </div>
-
       <!-- Ventana de habilitación de reporte de recepciones -->
       <div class="card" style="background:#FFF3E0;border-color:#F59E0B">
         <div class="ctitle" style="color:#92400E">⏰ Período habilitado para registrar recepciones</div>
@@ -930,6 +902,9 @@ textarea{resize:none;height:88px;line-height:1.5}
             <option value="">Todas las líneas</option>
             <option value="LINEA 1">Línea 1</option>
             <option value="LINEA 2">Línea 2</option>
+          </select>
+          <select id="g-mu-prod" onchange="renderMuestras()" style="flex:1;min-width:180px">
+            <option value="">Todos los productos</option>
           </select>
         </div>
       </div>
@@ -2012,7 +1987,14 @@ async function setCloudConfig(key, value) {
 
 async function loadMuestrasMov() {
   try {
-    var rows = await sbRequest('GET', '/muestras_movimientos?order=fecha.desc');
+    // Supabase entrega maximo 1000 filas por consulta: se pagina para traerlas todas
+    var rows = [], off = 0;
+    while (true) {
+      var page = await sbRequest('GET', '/muestras_movimientos?order=fecha.desc,id.desc&limit=1000&offset=' + off);
+      rows = rows.concat(page || []);
+      if (!page || page.length < 1000) break;
+      off += 1000;
+    }
     MUESTRAS_MOV = rows;
     return rows;
   } catch (e) {
@@ -2254,7 +2236,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-15-090629';
+const APP_VERSION = '2026-10-15-092229';
 
 async function checkForUpdates() {
   try {
@@ -2755,8 +2737,8 @@ async function renderMuestrasRecibidas(){
   var ciclo_num = selCyc && selCyc.value ? parseInt(selCyc.value) : null;
   listEl.innerHTML = '<p style="font-size:13px;color:var(--t3);padding:8px">Cargando...</p>';
   try {
-    // Leer de muestras_movimientos solo lo que el propio rep cargó (creado_por=CU)
-    var path = '/muestras_movimientos?rep=eq.' + encodeURIComponent(CU) + '&created_by=eq.' + encodeURIComponent(CU);
+    // Lo que el rep reportó y lo que gerencia le asignó (esto último no lo puede borrar)
+    var path = '/muestras_movimientos?rep=eq.' + encodeURIComponent(CU);
     if (ciclo_num) path += '&ciclo_num=eq.' + ciclo_num;
     path += '&order=fecha.desc,id.desc';
     var rows = await sbRequest('GET', path);
@@ -2773,9 +2755,9 @@ async function renderMuestrasRecibidas(){
     listEl.innerHTML = rows.map(function(r){
       return '<div style="padding:10px;border-bottom:1px solid #eef2ef">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">' +
-          '<div style="flex:1"><b>' + r.producto + '</b><div style="font-size:11.5px;color:var(--t3)">' + r.fecha + '</div></div>' +
+          '<div style="flex:1"><b>' + r.producto + '</b><div style="font-size:11.5px;color:var(--t3)">' + r.fecha + (r.created_by && r.created_by !== CU ? ' · <span style="color:#1565C0;font-weight:600">Asignado por gerencia</span>' : '') + '</div></div>' +
           '<div style="font-weight:700;color:var(--g);font-size:15px">' + r.cantidad + '</div>' +
-          '<button onclick="deleteMuestraRecibida(' + r.id + ')" style="padding:4px 9px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11px;font-weight:600;cursor:pointer">🗑</button>' +
+          (r.created_by && r.created_by !== CU ? '' : '<button onclick="deleteMuestraRecibida(' + r.id + ')" style="padding:4px 9px;border-radius:6px;border:1px solid #C0392B;background:#fff;color:#C0392B;font-size:11px;font-weight:600;cursor:pointer">🗑</button>') +
         '</div>' +
       '</div>';
     }).join('');
@@ -7282,6 +7264,44 @@ function renderMuestras(){
   const cicloNum = parseInt(ciclo);
   const cy = (CYCLE && CYCLE.num === cicloNum) ? CYCLE : (CYCLES_HISTORY||[]).find(function(c){ return c.num === cicloNum; });
   const cicloLabel = cy ? ('Ciclo ' + cy.num + ' (' + fmtShort(cy.ini) + ' → ' + fmtShort(cy.fin) + ')') : ('Ciclo ' + ciclo);
+
+  // Filtro por producto: lista de productos del catálogo y de los movimientos del ciclo
+  const prodSel = document.getElementById('g-mu-prod');
+  const prodFil = prodSel ? prodSel.value : '';
+  if (prodSel) {
+    const ps = new Set();
+    Object.values(PROD_LINEA||{}).forEach(arr => arr.forEach(p => ps.add(p)));
+    (MUESTRAS_MOV||[]).forEach(m => { if (parseInt(m.ciclo_num) === cicloNum && m.producto) ps.add(m.producto); });
+    prodSel.innerHTML = '<option value="">Todos los productos</option>' +
+      Array.from(ps).sort().map(p => '<option value="'+esc_(p)+'"'+(p===prodFil?' selected':'')+'>'+esc_(p)+'</option>').join('');
+  }
+  if (prodFil) {
+    // Un producto: cuánto tiene cada visitador (asignado, entregado y saldo)
+    let tA = 0, tE = 0;
+    const filas = reps.map(rep => {
+      const x = calcSaldoMuestras(rep, cicloNum).find(s => s.producto === prodFil);
+      return x ? { rep: rep, a: x.asignado, e: x.entregado, s: x.saldo } : null;
+    }).filter(Boolean).sort((p,q) => q.s - p.s);
+    filas.forEach(f => { tA += f.a; tE += f.e; });
+    const td = 'padding:8px 12px;font-size:13px;font-variant-numeric:tabular-nums';
+    el.innerHTML = !filas.length
+      ? '<div class="card"><div class="empty"><div class="empty-ico">📦</div><p>Nadie tiene asignado ni entregado ' + esc_(prodFil) + ' en ' + cicloLabel + '.</p></div></div>'
+      : '<div class="card" style="padding:0;overflow:hidden"><div style="padding:.75rem 1rem;font-weight:700">' + esc_(prodFil) + ' · ' + cicloLabel + '</div>'
+        + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--s2)">'
+        + ['Representante','Línea','Asignado','Entregado','Saldo'].map((h,i) => '<th style="padding:8px 12px;font-size:11px;color:var(--t3);text-transform:uppercase;text-align:'+(i<2?'left':'center')+'">'+h+'</th>').join('')
+        + '</tr></thead><tbody>'
+        + filas.map(f => {
+            const c = f.s < 0 ? '#C0392B' : (f.s < f.a*0.1 ? '#C47A0A' : '#1A5C3A');
+            return '<tr style="border-top:1px solid var(--b)"><td style="'+td+';font-weight:600">'+f.rep+'</td><td style="'+td+';color:var(--t2)">'+(REP_LINEA[f.rep]||'')+'</td>'
+              + '<td style="'+td+';text-align:center">'+f.a+'</td><td style="'+td+';text-align:center">'+f.e+'</td>'
+              + '<td style="'+td+';text-align:center;font-weight:700;color:'+c+'">'+f.s+'</td></tr>';
+          }).join('')
+        + '<tr style="border-top:2px solid var(--b);background:var(--s2)"><td style="'+td+';font-weight:700" colspan="2">TOTAL</td>'
+        + '<td style="'+td+';text-align:center;font-weight:700">'+tA+'</td><td style="'+td+';text-align:center;font-weight:700">'+tE+'</td>'
+        + '<td style="'+td+';text-align:center;font-weight:700">'+(tA-tE)+'</td></tr></tbody></table></div>';
+    renderMuHistorial();
+    return;
+  }
 
   // Calcular saldos por rep
   let html = '';
