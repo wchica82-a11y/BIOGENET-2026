@@ -2236,7 +2236,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-15-094622';
+const APP_VERSION = '2026-10-16-075456';
 
 async function checkForUpdates() {
   try {
@@ -3525,6 +3525,8 @@ function _cedNorm(c){
   var d = String(c||'').replace(/\D/g, '');
   return d.length === 9 ? '0' + d : d;
 }
+// "S/N", "NN", "XX"... escritos para pasar la validación en vez del dato real
+function _esRelleno(t){ return /(^|\s)(S\/?N|N\/?A|NN|X+|SIN|NINGUNO|NO TIENE)(\s|$)/.test(String(t||'').toUpperCase()); }
 function medFaltantes(m){
   var f = [];
   if (_cedNorm(m.cedula).length !== 10) f.push('cédula');
@@ -3596,6 +3598,10 @@ function openModMedico(m, modo, onDone){
     + '<div style="display:flex;flex-direction:column;gap:6px">'
     +   lbl('Apellidos (2 apellidos) *') + '<input id="mm-ape" value="' + esc_(ape) + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
     +   lbl('Nombres (2 nombres) *') + '<input id="mm-nom" value="' + esc_(nom) + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
+    +   '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--t2);margin:2px 0 4px 0">'
+    +     '<label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="mm-un-ape"> Solo tiene un apellido</label>'
+    +     '<label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="mm-un-nom"> Solo tiene un nombre</label>'
+    +   '</div>'
     +   lbl('Cédula (10 dígitos) *') + '<input id="mm-ced" inputmode="numeric" maxlength="10" value="' + esc_(_cedNorm(m.cedula)) + '" style="' + inp + mark('cédula') + '">'
     +   lbl('Especialidad *') + '<select id="mm-esp" style="' + inp + mark('especialidad') + '">' + espOpts + '</select>'
     +   lbl('Provincia') + '<input id="mm-prov" value="' + esc_(m.provincia||'') + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + '">'
@@ -3628,8 +3634,11 @@ async function submitModMedico(){
   if (!ciu) return fail('Escribe la ciudad.');
   if (dir.length < 15) return fail('Escribe la dirección completa (calle, número y referencia).');
   if (modo !== 'reporte' && !mot) return fail('Escribe el motivo del cambio.');
-  if ((ape.split(' ').length < 2 || nom.split(' ').length < 2) &&
-      !confirm('El médico debería tener 2 apellidos y 2 nombres.\n\nApellidos: ' + ape + '\nNombres: ' + nom + '\n\n¿Es correcto así (por ejemplo, solo tiene un nombre)?')) return;
+  // Rellenos como "S/N" no son datos: si tiene un solo nombre o apellido se marca la casilla
+  if (_esRelleno(ape) || _esRelleno(nom)) return fail('No escribas "S/N" ni rellenos. Si el médico solo tiene un nombre o un apellido, marca la casilla correspondiente.');
+  var unApe = document.getElementById('mm-un-ape').checked, unNom = document.getElementById('mm-un-nom').checked;
+  if (ape.split(' ').length < 2 && !unApe) return fail('Escribe los 2 apellidos. Si el médico solo tiene uno, marca "Solo tiene un apellido".');
+  if (nom.split(' ').length < 2 && !unNom) return fail('Escribe los 2 nombres. Si el médico solo tiene uno, marca "Solo tiene un nombre".');
   var nuevo = ape + ' ' + nom;
   var data = {
     nombre: nuevo, apellidos: ape, nombres: nom, especialidad: esp,
@@ -3750,6 +3759,7 @@ async function submitSolicitudAlta(){
   if (!apellidos){ alert('Los apellidos son obligatorios (2 apellidos).'); return; }
   if (!nombres){ alert('Los nombres son obligatorios (2 nombres).'); return; }
   if (!especialidad){ alert('La especialidad es obligatoria — selecciona una de la lista.'); return; }
+  if (_esRelleno(apellidos) || _esRelleno(nombres)){ alert('No escribas "S/N" ni rellenos en apellidos o nombres. Si el médico solo tiene un nombre o un apellido, déjalo así.'); return; }
   // Validación suave: 2 palabras en cada campo
   if (apellidos.split(/\s+/).length < 2){ if (!confirm('Los apellidos parecen no tener 2 apellidos. ¿Continuar de todas formas?')) return; }
   if (nombres.split(/\s+/).length < 2){ if (!confirm('Los nombres parecen no tener 2 nombres. ¿Continuar de todas formas?')) return; }
