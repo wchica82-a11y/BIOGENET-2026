@@ -2248,7 +2248,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-19-092459';
+const APP_VERSION = '2026-10-19-095715';
 
 async function checkForUpdates() {
   try {
@@ -3516,9 +3516,18 @@ async function rechazarSolicitud(id, quien){
   } catch(e){ alert('Error: '+e.message); }
 }
 // Gerente aprueba: crea el override e inserta en panel_overrides
+// Evita aplicar dos veces la misma solicitud si se toca el botón de nuevo mientras se procesa
+var _APROBANDO = {};
 async function gerenteAprobarSolicitud(id){
+  if (_APROBANDO[id]) return;
+  _APROBANDO[id] = true;
+  try { return await _gerenteAprobarSolicitud(id); }
+  finally { delete _APROBANDO[id]; }
+}
+async function _gerenteAprobarSolicitud(id){
   var s = (PANEL_SOLICITUDES||[]).find(function(x){ return x.id === id; });
   if (!s){ alert('Solicitud no encontrada.'); return; }
+  if (s.estado !== 'pendiente_gerente'){ alert('Esta solicitud ya fue procesada.'); return; }
   if (s.tipo === 'modificacion') return gerenteAprobarModificacion(s);
   if (!confirm('¿Aprobar solicitud de '+s.tipo+' de '+s.nombre+' para '+s.rep_solicita+'?')) return;
   try {
