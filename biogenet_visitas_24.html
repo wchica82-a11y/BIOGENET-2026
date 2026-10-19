@@ -2248,7 +2248,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-16-075913';
+const APP_VERSION = '2026-10-19-092459';
 
 async function checkForUpdates() {
   try {
@@ -3758,9 +3758,11 @@ async function gerenteAprobarModificacion(s){
   var base = { rep: s.rep_solicita, source_solicitud: s.id };
   try {
     // Un solo insert con las dos filas: es atómico y respeta el orden (quitar, luego agregar)
+    // Supabase exige que todas las filas de un insert tengan las mismas columnas
+    var vacio = { apellidos:'', nombres:'', especialidad:'', provincia:'', ciudad:'', direccion:'', tipo_medico:'', zona:'', cedula:'' };
     var rows = await sbRequest('POST', '/panel_overrides', [
-      Object.assign({ accion: 'remove', nombre: orig }, base),
-      Object.assign({ accion: 'add', nombre: nuevo, apellidos: s.apellidos||'', nombres: s.nombres||'',
+      Object.assign({}, vacio, { accion: 'remove', nombre: orig }, base),
+      Object.assign({}, vacio, { accion: 'add', nombre: nuevo, apellidos: s.apellidos||'', nombres: s.nombres||'',
         especialidad: s.especialidad||'', provincia: s.provincia||'', ciudad: s.ciudad||'', direccion: s.direccion||'',
         tipo_medico: s.tipo_medico||'', zona: s.zona||'', cedula: s.cedula||'' }, base)
     ]);
