@@ -2248,7 +2248,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-21-094846';
+const APP_VERSION = '2026-10-21-095639';
 
 async function checkForUpdates() {
   try {
@@ -5008,23 +5008,28 @@ function searchFarms(q) {
   if (!CU || !FARM_PANEL[farmPanelKey(CU)]) return;
   var list = document.getElementById('flist');
   if (!q) { list.innerHTML = ''; list.classList.remove('open'); return; }
-  var fu = q.toUpperCase();
+  var fu = sinTildes(q);
   var res = FARM_PANEL[farmPanelKey(CU)].filter(function(f){
-    return f.pdv.toUpperCase().includes(fu) ||
-           f.cadena.toUpperCase().includes(fu) ||
-           f.ciudad.toUpperCase().includes(fu) ||
-           f.zona.toUpperCase().includes(fu);
+    return sinTildes(f.pdv).includes(fu) ||
+           sinTildes(f.cadena).includes(fu) ||
+           sinTildes(f.ciudad).includes(fu) ||
+           sinTildes(f.zona).includes(fu) ||
+           sinTildes(f.dir).includes(fu) ||
+           sinTildes(f.cod).includes(fu);
   }).slice(0, 40);
   if (!res.length) {
     list.innerHTML = '<div class="ditem" style="color:var(--t3)">Sin resultados</div>';
     list.classList.add('open'); return;
   }
   list.innerHTML = res.map(function(f) {
-    var cod = (f.cod||'').replace(/"/g,'&quot;');
-    return '<div class="ditem" data-farmcod="' + cod + '">' +
-      '<div class="ditem-name">' + f.pdv + '</div>' +
-      '<div class="ditem-meta">' + (f.tipo ? '<span class="tag tp" style="font-size:10px;padding:2px 6px">' + f.tipo + '</span> ' : '') + '<span class="tag tp" style="font-size:10px;padding:2px 6px">' + f.cadena + '</span> ' +
-      f.ciudad + (f.zona ? ' · ' + f.zona : '') + '</div>' +
+    // cadena|código: varias cadenas usan los mismos números de código
+    var key = farmUbicId(f.cadena, f.cod).replace(/"/g,'&quot;');
+    var dir = String(f.dir||'').trim();
+    return '<div class="ditem" data-farmcod="' + key + '">' +
+      '<div class="ditem-name">' + esc_(f.pdv) + ' <span style="font-weight:400;color:var(--t3);font-size:11px">' + esc_(f.cod||'') + '</span></div>' +
+      '<div class="ditem-meta">' + (f.tipo ? '<span class="tag tp" style="font-size:10px;padding:2px 6px">' + f.tipo + '</span> ' : '') + '<span class="tag tp" style="font-size:10px;padding:2px 6px">' + esc_(f.cadena) + '</span> ' +
+      esc_(f.ciudad) + (f.zona ? ' · ' + esc_(f.zona) : '') + '</div>' +
+      (dir && !/^nan$/i.test(dir) ? '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">📍 ' + esc_(dir) + '</div>' : '') +
       '</div>';
   }).join('');
   list.querySelectorAll('.ditem[data-farmcod]').forEach(function(el) {
@@ -5035,7 +5040,9 @@ function searchFarms(q) {
 
 function selectFarm(cod) {
   if (!CU || !FARM_PANEL[farmPanelKey(CU)]) return;
-  var farm = FARM_PANEL[farmPanelKey(CU)].find(function(f){ return String(f.cod) === String(cod); });
+  var farm = FARM_PANEL[farmPanelKey(CU)].find(function(f){
+    return String(cod).indexOf('|') >= 0 ? farmUbicId(f.cadena, f.cod) === String(cod) : String(f.cod) === String(cod);
+  });
   if (!farm) return;
   selFarm = farm;
   document.getElementById('fsearch').value = '';
