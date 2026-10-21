@@ -567,14 +567,22 @@ function stockCell(cod){
   return '<td class="stock-cell">'+fmt(s)+'</td>';
 }
 
-function stockCellProd(cod, prod){
+function stockCellProd(cod, prod, marca){
   // If a specific product is given, show that product's stock
   if(prod && prod !== 'all'){
     var ps = stockProdMap[cod] ? stockProdMap[cod][prod] : null;
     if(ps == null) return '<td class="stock-cell stock-0">—</td>';
     return '<td class="stock-cell">'+fmt(ps)+'</td>';
   }
+  if(marca && marca !== 'all') return _stockMarcaCell(stockProdMap[cod], marca);
   return stockCell(cod);
+}
+// Stock de los productos de una marca (suma de sus presentaciones)
+function _stockMarcaCell(prods, marca){
+  var t = 0, hay = false;
+  Object.keys(prods||{}).forEach(function(p){ if (marcaDe(p) === marca){ t += (+prods[p]||0); hay = true; } });
+  if(!hay || !t) return '<td class="stock-cell stock-0">—</td>';
+  return '<td class="stock-cell">'+fmt(t)+'</td>';
 }
 
 function rankClass(i){ return i===0?'rk1':i===1?'rk2':i===2?'rk3':'rkn'; }
@@ -889,8 +897,8 @@ function renderRep(){
   var met=document.getElementById('r-met').value;
   var mnths=getMonths(dataRep);
   var hasW=weeklyLabel&&weeklyRep.length>0;
-  var data=prodF==='all'?dataRep:dataRep.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
-  var wdata=prodF==='all'?weeklyRep:weeklyRep.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
+  var data=(prodF==='all'&&marcaF==='all')?dataRep:dataRep.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
+  var wdata=(prodF==='all'&&marcaF==='all')?weeklyRep:weeklyRep.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
 
   var tr=document.getElementById('r-th');
   tr.innerHTML='<th>#</th><th>REPRESENTANTE</th><th>PDV ACTIVOS</th>'
@@ -1001,9 +1009,9 @@ function renderRepPDV(){
   var allRepData=dataRep.filter(function(d){return d.rep===currentRep;});
   var codMap={};
   allRepData.forEach(function(d){if(!codMap[d.cod])codMap[d.cod]={cod:d.cod,pdv:d.pdv};});
-  var filtData=prodF==='all'?allRepData:allRepData.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
+  var filtData=(prodF==='all'&&marcaF==='all')?allRepData:allRepData.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
   var filtW=weeklyRep.filter(function(d){return d.rep===currentRep;});
-  if(prodF!=='all') filtW=filtW.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
+  if(prodF!=='all'||marcaF!=='all') filtW=filtW.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
 
   var activeRows=aggByKey(filtData,filtW,function(d){return d.cod;},met);
   var activeCods={};
@@ -1025,7 +1033,7 @@ function renderRepPDV(){
       +'<td><span class="rk '+rk+'">'+(i+1)+'</span></td>'
       +'<td><div class="main-name">'+esc(row.pdv)+'</div><div class="sub-name">'+esc(row.cod)+'</div></td>'
       +'<td><span class="tag tag-green">Activo</span></td>'
-      +stockCellProd(row.cod,prodF)+monthRowCells(row,mnths)+wCell
+      +stockCellProd(row.cod,prodF,marcaF)+monthRowCells(row,mnths)+wCell
       +'<td class="total-cell">'+fmt(row.total)+'</td></tr>';
   });
   if(inactiveList.length>0&&showInactive){
@@ -1039,7 +1047,7 @@ function renderRepPDV(){
         +'<td><span class="rk rkn">—</span></td>'
         +'<td><div class="main-name" style="color:var(--muted)">'+esc(cv.pdv)+'</div><div class="sub-name">'+esc(cv.cod)+'</div></td>'
         +'<td><span class="tag tag-red">Sin ventas</span></td>'
-        +stockCellProd(cv.cod,prodF)+z+zw
+        +stockCellProd(cv.cod,prodF,marcaF)+z+zw
         +'<td class="month-val mv-0">0</td></tr>';
     });
   }
@@ -1177,12 +1185,13 @@ function gpfStockCell(cod){
   return '<td class="stock-cell">'+fmt(s)+'</td>';
 }
 
-function gpfStockCellProd(cod, prod){
+function gpfStockCellProd(cod, prod, marca){
   if(prod && prod !== 'all'){
     var ps = gpfStockProd[cod] ? gpfStockProd[cod][prod] : null;
     if(ps == null) return '<td class="stock-cell stock-0">—</td>';
     return '<td class="stock-cell">'+fmt(ps)+'</td>';
   }
+  if(marca && marca !== 'all') return _stockMarcaCell(gpfStockProd[cod], marca);
   return gpfStockCell(cod);
 }
 
@@ -1193,7 +1202,7 @@ function gpfRenderRep(){
   var met   = document.getElementById('g-met').value;
   var mnths = getMonths(gpfDataRep);
 
-  var data = prodF==='all' ? gpfDataRep : gpfDataRep.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
+  var data = (prodF==='all'&&marcaF==='all') ? gpfDataRep : gpfDataRep.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
 
   var tr = document.getElementById('g-th');
   tr.innerHTML = '<th>#</th><th>REPRESENTANTE</th><th>PDV ACTIVOS</th>'
@@ -1285,7 +1294,7 @@ function gpfRenderPDV(){
   var allRepData = gpfDataRep.filter(function(d){return d.rep===gpfCurrentRep;});
   var codMap = {};
   allRepData.forEach(function(d){ if(!codMap[d.cod]) codMap[d.cod]={cod:d.cod,pdv:d.pdv}; });
-  var filtData = prodF==='all' ? allRepData : allRepData.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
+  var filtData = (prodF==='all'&&marcaF==='all') ? allRepData : allRepData.filter(function(d){return prodPasa(d.prod,prodF,marcaF);});
 
   // Agregar por PDV
   var pdvMap = {};
@@ -1319,7 +1328,7 @@ function gpfRenderPDV(){
       + '<td><span class="rk '+rk+'">'+(i+1)+'</span></td>'
       + '<td><div class="main-name">'+esc(row.pdv)+'</div><div class="sub-name">'+esc(row.cod)+'</div></td>'
       + '<td><span class="tag tag-green">Activo</span></td>'
-      + gpfStockCellProd(row.cod, prodF)
+      + gpfStockCellProd(row.cod, prodF, marcaF)
       + mHtml
       + '<td class="total-cell">'+fmt(row.total)+'</td></tr>';
   });
@@ -1334,7 +1343,7 @@ function gpfRenderPDV(){
         + '<td><span class="rk rkn">—</span></td>'
         + '<td><div class="main-name" style="color:var(--muted)">'+esc(cv.pdv)+'</div><div class="sub-name">'+esc(cv.cod)+'</div></td>'
         + '<td><span class="tag tag-red">Sin ventas</span></td>'
-        + gpfStockCellProd(cv.cod, prodF) + z
+        + gpfStockCellProd(cv.cod, prodF, marcaF) + z
         + '<td class="month-val mv-0">0</td></tr>';
     });
   }
