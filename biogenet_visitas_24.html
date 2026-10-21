@@ -589,8 +589,8 @@ textarea{resize:none;height:88px;line-height:1.5}
         </div>
         <p style="font-size:11.5px;color:var(--t3);margin-bottom:.7rem">Completa los datos. La solicitud pasa primero a tu compañero para confirmar, luego queda en espera de aprobación final.</p>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <input id="sa-apellidos" placeholder="Apellidos * (2 apellidos, ej: PEREZ GOMEZ)" oninput="this.value=this.value.toUpperCase()" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;text-transform:uppercase">
-          <input id="sa-nombres" placeholder="Nombres * (2 nombres, ej: JUAN CARLOS)" oninput="this.value=this.value.toUpperCase()" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;text-transform:uppercase">
+          <input id="sa-apellidos" placeholder="Apellidos * (2 apellidos, ej: PEREZ GOMEZ)" oninput="this.value=sinTildes(this.value)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;text-transform:uppercase">
+          <input id="sa-nombres" placeholder="Nombres * (2 nombres, ej: JUAN CARLOS)" oninput="this.value=sinTildes(this.value)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;text-transform:uppercase">
           <select id="sa-esp" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
             <option value="">— Selecciona especialidad * —</option>
             <option>ACUPUNTURA</option><option>ALERGOLOGIA</option><option>ALGOLOGIA</option>
@@ -2248,7 +2248,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-19-095715';
+const APP_VERSION = '2026-10-21-090807';
 
 async function checkForUpdates() {
   try {
@@ -3585,6 +3585,8 @@ function medUnNombre(nombre){
   var n = String(nombre||'').toUpperCase().replace(/\s+/g,' ').trim();
   return (MED_UN_NOMBRE||[]).some(function(x){ return String(x).toUpperCase().replace(/\s+/g,' ').trim() === n; });
 }
+// Nombres de médicos en MAYÚSCULAS, sin tildes y con N en vez de Ñ (formato del panel)
+function sinTildes(t){ return String(t==null?'':t).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
 // "S/N", "NN", "XX"... escritos para pasar la validación en vez del dato real
 function _esRelleno(t){ return /(^|\s)(S\/?N|N\/?A|NN|X+|SIN|NINGUNO|NO TIENE)(\s|$)/.test(String(t||'').toUpperCase()); }
 function medFaltantes(m){
@@ -3659,8 +3661,8 @@ function openModMedico(m, modo, onDone){
     + (modo === 'reporte' ? '<p style="font-size:11.5px;color:var(--t3);margin:0 0 .6rem 0">Para reportar a este médico primero completa su información. La corrección pasa a tu compañero y queda en espera de aprobación; la visita se registra ahora mismo.</p>'
                           : '<p style="font-size:11.5px;color:var(--t3);margin:0 0 .6rem 0">Corrige lo que esté mal. La solicitud pasa primero a tu compañero para confirmar, luego queda en espera de aprobación final.</p>')
     + '<div style="display:flex;flex-direction:column;gap:6px">'
-    +   lbl('Apellidos (2 apellidos) *') + '<input id="mm-ape" value="' + esc_(ape) + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
-    +   lbl('Nombres (2 nombres) *') + '<input id="mm-nom" value="' + esc_(nom) + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
+    +   lbl('Apellidos (2 apellidos) *') + '<input id="mm-ape" value="' + esc_(ape) + '" oninput="this.value=sinTildes(this.value)" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
+    +   lbl('Nombres (2 nombres) *') + '<input id="mm-nom" value="' + esc_(nom) + '" oninput="this.value=sinTildes(this.value)" style="' + inp + mark('2 apellidos y 2 nombres') + '">'
     +   lbl('Cédula (10 dígitos) *') + '<input id="mm-ced" inputmode="numeric" maxlength="10" value="' + esc_(_cedNorm(m.cedula)) + '" style="' + inp + mark('cédula') + '">'
     +   lbl('Especialidad *') + '<select id="mm-esp" style="' + inp + mark('especialidad') + '">' + espOpts + '</select>'
     +   lbl('Provincia') + '<input id="mm-prov" value="' + esc_(m.provincia||'') + '" oninput="this.value=this.value.toUpperCase()" style="' + inp + '">'
@@ -3684,7 +3686,7 @@ async function submitModMedico(){
   var val = function(id){ return (document.getElementById(id).value || '').trim(); };
   var errEl = document.getElementById('mm-err');
   var fail = function(t){ errEl.style.display = 'block'; errEl.textContent = '⚠️ ' + t; };
-  var ape = val('mm-ape').toUpperCase().replace(/\s+/g, ' '), nom = val('mm-nom').toUpperCase().replace(/\s+/g, ' ');
+  var ape = sinTildes(val('mm-ape')).replace(/\s+/g, ' '), nom = sinTildes(val('mm-nom')).replace(/\s+/g, ' ');
   var ced = _cedNorm(val('mm-ced')), esp = val('mm-esp'), ciu = val('mm-ciu').toUpperCase(), dir = val('mm-dir');
   var mot = val('mm-mot');
   if (!ape || !nom) return fail('Escribe apellidos y nombres.');
@@ -3814,8 +3816,8 @@ function openSolicitudAlta(){
 }
 function closeSolicitudAlta(){ var m=document.getElementById('modal-alta-med'); if (m) m.style.display='none'; }
 async function submitSolicitudAlta(){
-  var apellidos = document.getElementById('sa-apellidos').value.trim().toUpperCase();
-  var nombres   = document.getElementById('sa-nombres').value.trim().toUpperCase();
+  var apellidos = sinTildes(document.getElementById('sa-apellidos').value.trim());
+  var nombres   = sinTildes(document.getElementById('sa-nombres').value.trim());
   var especialidad = document.getElementById('sa-esp').value;
   if (!apellidos){ alert('Los apellidos son obligatorios (2 apellidos).'); return; }
   if (!nombres){ alert('Los nombres son obligatorios (2 nombres).'); return; }
@@ -4800,7 +4802,8 @@ function searchDocs(q){
   const list=document.getElementById('dlist');
   if(!q){ list.innerHTML=''; list.classList.remove('open'); return; }
   const fu=q.toUpperCase();
-  const res=PANEL[CU].filter(d=>d.nombre.toUpperCase().includes(fu)||d.especialidad.toUpperCase().includes(fu)||d.ciudad.toUpperCase().includes(fu)).slice(0,35);
+  const fq=sinTildes(q);
+  const res=PANEL[CU].filter(d=>sinTildes(d.nombre).includes(fq)||sinTildes(d.especialidad).includes(fq)||sinTildes(d.ciudad).includes(fq)).slice(0,35);
   if(!res.length){ list.innerHTML='<div class="ditem" style="color:var(--t3)">Sin resultados</div>'; list.classList.add('open'); return; }
   list.innerHTML=res.map(d=>`<div class="ditem" data-nombre="${d.nombre.replace(/"/g,'&quot;')}">
     <div class="ditem-name">${d.nombre}</div>
