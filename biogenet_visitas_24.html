@@ -2222,13 +2222,6 @@ async function updateLastSeen(rep) {
 
 // Validación principal de acceso para representantes
 async function validateRepAccess(rep) {
-  // === EXCEPCION TEMPORAL PARA REUNION ===
-  // Permite a LISSETTE SORIANO entrar desde computadora para hacer demo en reunion
-  // Revertir despues de la reunion
-  if (rep === 'LISSETTE SORIANO') {
-    return {ok: true, msg: ''};
-  }
-  // === FIN EXCEPCION ===
   // 1. Check iPad
   if (!isIPad()) {
     return {ok: false, msg: '⚠️ Esta aplicación solo funciona en los iPads de trabajo asignados.'};
@@ -2258,7 +2251,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-22-094647';
+const APP_VERSION = '2026-10-22-102009';
 
 async function checkForUpdates() {
   try {
