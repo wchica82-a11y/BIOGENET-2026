@@ -2192,6 +2192,14 @@ async function registerDevice(rep, activationId) {
         device_label: label, user_agent: tok.user_agent, active: true, last_seen: new Date().toISOString()
       });
     }
+    // Un solo iPad por visitador y ningún iPad compartido: se desactivan los
+    // otros iPads de este rep y este iPad para cualquier otro rep.
+    try {
+      await sbRequest('PATCH', '/device_tokens?rep=eq.' + encodeURIComponent(rep) + '&device_id=neq.' + encodeURIComponent(deviceId) + '&active=eq.true', {active: false});
+      await sbRequest('PATCH', '/device_tokens?device_id=eq.' + encodeURIComponent(deviceId) + '&rep=neq.' + encodeURIComponent(rep) + '&active=eq.true', {active: false});
+    } catch (e2) {
+      console.warn('No se pudieron desactivar los otros dispositivos:', e2.message);
+    }
     // Marcar ventana de activación como usada
     await sbRequest('PATCH', '/device_activations?id=eq.' + activationId, {
       used_at: new Date().toISOString(),
@@ -2251,7 +2259,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-22-104313';
+const APP_VERSION = '2026-10-22-105420';
 
 async function checkForUpdates() {
   try {
