@@ -2174,14 +2174,24 @@ async function registerDevice(rep, activationId) {
   var label = prompt('¿Cómo quieres llamar a este iPad? (ej: "iPad Juan", "iPad nuevo")', 'iPad de ' + rep);
   if (!label) label = 'iPad de ' + rep;
   try {
-    // Insertar token
-    await sbRequest('POST', '/device_tokens', {
+    // Insertar token. Si este iPad ya estuvo registrado para el rep (y luego se
+    // desactivó), el registro existe: se reactiva en vez de crear otro.
+    var tok = {
       rep: rep,
       device_id: deviceId,
       device_label: label,
       user_agent: (navigator.userAgent || '').substring(0, 250),
       active: true
-    });
+    };
+    try {
+      await sbRequest('POST', '/device_tokens', tok);
+    } catch (e1) {
+      var m1 = String(e1 && e1.message || '');
+      if (m1.indexOf('409') < 0 && m1.indexOf('23505') < 0) throw e1;
+      await sbRequest('PATCH', '/device_tokens?rep=eq.' + encodeURIComponent(rep) + '&device_id=eq.' + encodeURIComponent(deviceId), {
+        device_label: label, user_agent: tok.user_agent, active: true, last_seen: new Date().toISOString()
+      });
+    }
     // Marcar ventana de activación como usada
     await sbRequest('PATCH', '/device_activations?id=eq.' + activationId, {
       used_at: new Date().toISOString(),
@@ -2248,7 +2258,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-21-095639';
+const APP_VERSION = '2026-10-22-094647';
 
 async function checkForUpdates() {
   try {
