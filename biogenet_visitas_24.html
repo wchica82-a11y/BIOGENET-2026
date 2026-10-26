@@ -2259,7 +2259,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-22-105420';
+const APP_VERSION = '2026-10-26-091051';
 
 async function checkForUpdates() {
   try {
@@ -4144,7 +4144,7 @@ async function loadMarketingCampanas(){
   try {
     var rows = await sbRequest('GET', '/marketing_campanas?order=created_at.desc&limit=200');
     MARKETING_CAMPANAS = rows || [];
-  } catch(e){ console.warn('loadMarketingCampanas falló:', e.message); MARKETING_CAMPANAS = []; }
+  } catch(e){ console.warn('loadMarketingCampanas falló:', e.message); } // sin red: se conserva la última lista
 }
 async function loadMarketingAsignaciones(){
   try {
@@ -4157,7 +4157,7 @@ async function loadMarketingAsignaciones(){
       off += 1000;
     }
     MARKETING_ASIGNACIONES = all;
-  } catch(e){ console.warn('loadMarketingAsignaciones falló:', e.message); MARKETING_ASIGNACIONES = []; }
+  } catch(e){ console.warn('loadMarketingAsignaciones falló:', e.message); } // sin red: se conserva la última lista
 }
 function _campanasActivas(){ return (MARKETING_CAMPANAS||[]).filter(function(c){ return c.estado === 'activa'; }); }
 function _findAsig(campId, medico){
@@ -4277,7 +4277,19 @@ function switchPnlView(view){
   }
   if (wT) wT.style.display = (view==='trabajo') ? '' : 'none';
   if (wM) wM.style.display = (view==='marketing') ? '' : 'none';
-  if (view==='marketing') renderMarketingView();
+  if (view==='marketing'){ renderMarketingView(); _mktRefrescar(); }
+}
+
+// Trae de la nube lo que otros visitadores tomaron o soltaron desde el login
+// y repinta, para que un médico liberado aparezca disponible sin reiniciar.
+var _MKT_REFRESCANDO = false;
+async function _mktRefrescar(){
+  if (_MKT_REFRESCANDO) return;
+  _MKT_REFRESCANDO = true;
+  try {
+    await Promise.all([loadMarketingCampanas(), loadMarketingAsignaciones()]);
+    if (PNL_VIEW === 'marketing') renderMarketingView();
+  } catch(e){} finally { _MKT_REFRESCANDO = false; }
 }
 
 function renderMarketingView(){
@@ -4292,7 +4304,7 @@ function renderMarketingView(){
   }
   renderMarketingList();
 }
-function onMktCampChange(v){ MKT_CAMPANA_ID = v ? parseInt(v) : null; renderMarketingList(); }
+function onMktCampChange(v){ MKT_CAMPANA_ID = v ? parseInt(v) : null; renderMarketingList(); _mktRefrescar(); }
 
 function renderMarketingList(){
   var el = document.getElementById('mkt-list');
