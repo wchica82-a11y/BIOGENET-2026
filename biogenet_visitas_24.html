@@ -627,7 +627,7 @@ textarea{resize:none;height:88px;line-height:1.5}
             <option value="GIR">Gira (GIR)</option>
           </select>
           <input id="sa-zona" placeholder="Zona" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
-          <input id="sa-cedula" placeholder="Cédula" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
+          <input id="sa-cedula" placeholder="Cédula (obligatoria)" inputmode="numeric" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <textarea id="sa-motivo" placeholder="Motivo del alta (opcional)" rows="2" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;resize:vertical"></textarea>
         </div>
         <div style="display:flex;gap:8px;margin-top:.9rem">
@@ -2292,7 +2292,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-28-091447';
+const APP_VERSION = '2026-10-28-103610';
 
 async function checkForUpdates() {
   try {
@@ -3447,6 +3447,7 @@ function renderGerSolicitudes(){
         + '</div>'
         + '<div style="font-size:11.5px;color:var(--t3);margin-bottom:6px">Solicita <b>'+esc_(s.rep_solicita)+'</b> · Compañero <b>'+esc_(s.rep_companero||'sin compañero')+'</b> · '+(s.created_at?fmtShort(s.created_at.slice(0,10)):'')+(s.comp_aprobado_at?' · Confirmada '+fmtShort(s.comp_aprobado_at.slice(0,10)):'')+'</div>'
         + (s.tipo==='modificacion' ? _modCambiosHTML(s) : '')
+        + _altaDupHTML(s)
         + (s.motivo?'<div style="font-size:12px;padding:7px 10px;background:#FEF3C7;border-radius:6px;color:var(--t1)"><b>Motivo:</b> '+esc_(s.motivo)+'</div>':'')
         + (s.rechazo_motivo?'<div style="font-size:12px;padding:7px 10px;background:#FEE2E2;border-radius:6px;color:#C0392B;margin-top:6px"><b>Rechazo ('+esc_(s.rechazado_por||'')+'):</b> '+esc_(s.rechazo_motivo)+'</div>':'')
         + acciones
@@ -4035,6 +4036,88 @@ async function gerenteAprobarModificacion(s){
   } catch(e){ alert('Error: ' + e.message); }
 }
 
+// ── Altas: detectar médicos que ya están en un panel o en otra alta pendiente ──
+// Cédula ecuatoriana: 10 dígitos, provincia 01-24 o 30 y dígito verificador (módulo 10).
+// No se exige tercer dígito < 6: Guayas ya emite cédulas 095.../096... a personas.
+function _cedValida(c){
+  if (!/^\d{10}$/.test(c)) return false;
+  var p = parseInt(c.slice(0,2), 10);
+  if (!((p >= 1 && p <= 24) || p === 30)) return false;
+  var s = 0;
+  for (var i = 0; i < 9; i++){ var v = parseInt(c[i], 10) * (i % 2 ? 1 : 2); s += v > 9 ? v - 9 : v; }
+  return (10 - s % 10) % 10 === parseInt(c[9], 10);
+}
+function _nomNorm(n){ return sinTildes(n).replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function _lev(a, b){
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  var prev = [], cur, i, j;
+  for (j = 0; j <= b.length; j++) prev[j] = j;
+  for (i = 1; i <= a.length; i++){
+    cur = [i];
+    for (j = 1; j <= b.length; j++)
+      cur[j] = Math.min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+// Mismo médico escrito distinto: 1-2 letras de diferencia, o el nombre del panel
+// (a veces solo "APELLIDO NOMBRE") está contenido en el nuevo con el mismo primer apellido
+function _nomParecido(nuevo, panel){
+  if (!nuevo || !panel) return false;
+  if (_lev(nuevo, panel) <= 2) return true;
+  var A = nuevo.split(' '), B = panel.split(' ');
+  if (B.length >= 2 && A[0] === B[0] && B.every(function(w){ return A.indexOf(w) >= 0; })) return true;
+  if (A.length >= 3 && B.length >= 3 && A[0] === B[0] && A[1] === B[1] && A[2] === B[2]) return true;
+  return false;
+}
+// Devuelve coincidencias en el panel propio (rep + compañero), en otros paneles y en altas pendientes
+function _altaDuplicados(d, rep, excluirId){
+  var ced = _cedNorm(d.cedula), nom = _nomNorm(d.nombre);
+  var mios = repYCompanero(rep);
+  var out = {propio: [], parecido: [], otros: [], pend: []};
+  Object.keys(PANEL||{}).forEach(function(r){
+    (PANEL[r]||[]).forEach(function(m){
+      var mn = _nomNorm(m.nombre), mc = _cedNorm(m.cedula);
+      var porCed = ced.length === 10 && mc === ced;
+      var igual = porCed || mn === nom;
+      var hit = {rep: r, nombre: m.nombre, cedula: m.cedula || '', porCed: porCed};
+      if (mios.indexOf(r) >= 0){
+        if (igual) out.propio.push(hit);
+        else if (_nomParecido(nom, mn)) out.parecido.push(hit);
+      } else if (igual){
+        out.otros.push(hit);
+      }
+    });
+  });
+  (PANEL_SOLICITUDES||[]).forEach(function(s){
+    if (s.tipo !== 'alta' || s.id === excluirId) return;
+    if (s.estado !== 'pendiente_companero' && s.estado !== 'pendiente_gerente') return;
+    if (mios.indexOf(s.rep_solicita) < 0) return;
+    var sc = _cedNorm(s.cedula), sn = _nomNorm(s.nombre);
+    if ((ced.length === 10 && sc === ced) || sn === nom || _nomParecido(nom, sn))
+      out.pend.push({id: s.id, rep: s.rep_solicita, nombre: s.nombre, cedula: s.cedula || ''});
+  });
+  // Un mismo médico aparece una vez por rep de la pareja: basta con uno
+  var uno = function(l){ var v = {}; return l.filter(function(h){ var k = _nomNorm(h.nombre); if (v[k]) return false; v[k] = 1; return true; }); };
+  out.propio = uno(out.propio); out.parecido = uno(out.parecido);
+  return out;
+}
+// Avisos para la tarjeta de la solicitud en el panel gerencial
+function _altaDupHTML(s){
+  if (s.tipo !== 'alta' || (s.estado !== 'pendiente_gerente' && s.estado !== 'pendiente_companero')) return '';
+  var D = _altaDuplicados(s, s.rep_solicita, s.id), L = [];
+  var desc = function(h){ return '<b>' + esc_(h.nombre) + '</b>' + (h.cedula ? ' (C.I. ' + esc_(h.cedula) + ')' : ''); };
+  D.propio.forEach(function(h){ L.push('Ya está en su panel: ' + desc(h) + (h.porCed ? ' — misma cédula' : '')); });
+  D.parecido.forEach(function(h){ L.push('Se parece a uno de su panel: ' + desc(h)); });
+  D.pend.forEach(function(h){ L.push('Alta repetida: ' + desc(h) + ' — otra solicitud de ' + esc_(h.rep) + ' (#' + h.id + ')'); });
+  D.otros.forEach(function(h){ L.push('Está en el panel de ' + esc_(h.rep) + ': ' + desc(h) + (h.porCed ? ' — misma cédula' : '')); });
+  var c = _cedNorm(s.cedula);
+  if (!c) L.push('Sin cédula');
+  else if (!_cedValida(c)) L.push('Cédula ' + esc_(s.cedula) + ' no es válida (o es pasaporte)');
+  if (!L.length) return '';
+  return '<div style="font-size:12px;padding:7px 10px;background:#FEE2E2;border-radius:6px;color:#991B1B;margin-bottom:6px;line-height:1.6">⚠️ ' + L.join('<br>⚠️ ') + '</div>';
+}
+
 // UI: modal alta médico
 function openSolicitudAlta(){
   var m = document.getElementById('modal-alta-med');
@@ -4067,9 +4150,23 @@ async function submitSolicitudAlta(){
     ciudad:      document.getElementById('sa-ciudad').value.trim(),
     tipo_medico: document.getElementById('sa-tipo').value,
     zona:        document.getElementById('sa-zona').value.trim(),
-    cedula:      document.getElementById('sa-cedula').value.trim(),
+    cedula:      _cedNorm(document.getElementById('sa-cedula').value),
     motivo:      document.getElementById('sa-motivo').value.trim()
   };
+  if (!data.cedula){ alert('La cédula es obligatoria: con ella se verifica que el médico no esté ya en el panel.'); return; }
+  if (!_cedValida(data.cedula) && !confirm('La cédula ' + data.cedula + ' no es una cédula ecuatoriana válida. Revisa los dígitos.\n\nSi es el pasaporte de un médico extranjero, acepta para continuar.')) return;
+  var dup = _altaDuplicados(data, CU);
+  if (dup.propio.length){
+    var h = dup.propio[0];
+    alert('Este médico ya está en tu panel' + (h.porCed ? ' (misma cédula)' : '') + ':\n\n' + h.nombre + (h.cedula ? '  ·  C.I. ' + h.cedula : '') + '\n\nNo hace falta darlo de alta. Si sus datos están mal, usa "Modificar" en tu panel.');
+    return;
+  }
+  if (dup.pend.length){
+    alert('Ya hay una solicitud de alta para este médico en espera de aprobación:\n\n' + dup.pend[0].nombre + ' (enviada por ' + dup.pend[0].rep + ')');
+    return;
+  }
+  if (dup.parecido.length && !confirm('En tu panel hay un médico muy parecido:\n\n' + dup.parecido.map(function(h){ return h.nombre + (h.cedula ? '  ·  C.I. ' + h.cedula : ''); }).join('\n') + '\n\n¿Es un médico DISTINTO? Acepta solo si estás seguro.')) return;
+  if (dup.otros.length && !confirm('Este médico ya está en el panel de: ' + dup.otros.map(function(h){ return h.rep; }).filter(function(r, i, a){ return a.indexOf(r) === i; }).join(', ') + '.\n\n¿Enviar la solicitud de todas formas?')) return;
   var ok = await submitSolicitud('alta', data);
   if (ok) closeSolicitudAlta();
 }
