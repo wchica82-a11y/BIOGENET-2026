@@ -2259,7 +2259,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-26-091051';
+const APP_VERSION = '2026-10-28-085226';
 
 async function checkForUpdates() {
   try {
@@ -3222,7 +3222,7 @@ function renderGerSolicitudes(){
         +   '</div>'
         +   '<span style="font-size:10.5px;color:#fff;background:'+estCol+';padding:3px 8px;border-radius:5px;font-weight:700;white-space:nowrap">'+estLbl+'</span>'
         + '</div>'
-        + '<div style="font-size:11.5px;color:var(--t3);margin-bottom:6px">Solicita <b>'+esc_(s.rep_solicita)+'</b> · Compañero <b>'+esc_(s.rep_companero)+'</b> · '+(s.created_at?fmtShort(s.created_at.slice(0,10)):'')+(s.comp_aprobado_at?' · Confirmada '+fmtShort(s.comp_aprobado_at.slice(0,10)):'')+'</div>'
+        + '<div style="font-size:11.5px;color:var(--t3);margin-bottom:6px">Solicita <b>'+esc_(s.rep_solicita)+'</b> · Compañero <b>'+esc_(s.rep_companero||'sin compañero')+'</b> · '+(s.created_at?fmtShort(s.created_at.slice(0,10)):'')+(s.comp_aprobado_at?' · Confirmada '+fmtShort(s.comp_aprobado_at.slice(0,10)):'')+'</div>'
         + (s.tipo==='modificacion' ? _modCambiosHTML(s) : '')
         + (s.motivo?'<div style="font-size:12px;padding:7px 10px;background:#FEF3C7;border-radius:6px;color:var(--t1)"><b>Motivo:</b> '+esc_(s.motivo)+'</div>':'')
         + (s.rechazo_motivo?'<div style="font-size:12px;padding:7px 10px;background:#FEE2E2;border-radius:6px;color:#C0392B;margin-top:6px"><b>Rechazo ('+esc_(s.rechazado_por||'')+'):</b> '+esc_(s.rechazo_motivo)+'</div>':'')
@@ -3461,11 +3461,8 @@ function applyPanelOverrides(){
 
 // Enviar solicitud (rep)
 async function submitSolicitud(tipo, data){
-  var comp = REP_PAIRS[CU];
-  if (!comp){
-    alert('No tienes compañero asignado.');
-    return false;
-  }
+  // Sin compañero (p. ej. el par dejó la empresa) la solicitud va directo a aprobación
+  var comp = (REP_PAIRS||{})[CU] || '';
   var payload = {
     tipo: tipo,
     rep_solicita: CU,
@@ -3481,7 +3478,7 @@ async function submitSolicitud(tipo, data){
     zona: data.zona||'',
     cedula: data.cedula||'',
     motivo: (data.motivo||'').trim(),
-    estado: 'pendiente_companero'
+    estado: comp ? 'pendiente_companero' : 'pendiente_gerente'
   };
   if (tipo === 'modificacion') payload.nombre_original = data.nombre_original || '';
   if (!payload.nombre){ alert('Falta el nombre del médico.'); return false; }
@@ -3489,7 +3486,7 @@ async function submitSolicitud(tipo, data){
   try {
     await sbRequest('POST', '/panel_solicitudes', payload);
     await loadPanelSolicitudes();
-    if (typeof showToast==='function') showToast('✅ Solicitud enviada. Espera la aprobación de '+comp+'.');
+    if (typeof showToast==='function') showToast(comp ? '✅ Solicitud enviada. Espera la aprobación de '+comp+'.' : '✅ Solicitud enviada. En espera de aprobación.');
     renderMisSolicitudes();
     return true;
   } catch(e){
@@ -3625,7 +3622,6 @@ function _modPendiente(nombre){
 }
 function medDebeCompletar(m){
   if (!m || !PANEL_DESDE_BD) return false;
-  if (!REP_PAIRS || !REP_PAIRS[CU]) return false;   // sin compañero no puede enviar solicitudes
   if (_MOD_ENVIADO[String(m.nombre||'').toUpperCase().trim()]) return false;
   if (!medFaltantes(m).length) return false;
   return !_modPendiente(m.nombre);
@@ -3925,7 +3921,7 @@ function renderMisSolicitudes(){
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:.9rem 0 .4rem 0"><div style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.03em">📋 Mis solicitudes recientes ('+mias.length+')</div>'
       + (resueltasVisibles>0 ? '<button onclick="limpiarSolicitudesLeidas()" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11px;cursor:pointer;font-family:var(--f)">🧹 Limpiar leídas ('+resueltasVisibles+')</button>' : '')
       + '</div>';
-    html += mias.slice(0,15).map(function(s){ return _solicCardHTML(s, 'Compañero: '+s.rep_companero); }).join('');
+    html += mias.slice(0,15).map(function(s){ return _solicCardHTML(s, 'Compañero: '+(s.rep_companero||'sin compañero')); }).join('');
   }
   // Sección 3: solicitudes de mi compañero que ya confirme/rechace (para ver el resultado final)
   if (delComp.length){
