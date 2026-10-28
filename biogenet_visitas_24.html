@@ -70,7 +70,7 @@ textarea{resize:none;height:88px;line-height:1.5}
 .main{flex:1;overflow-y:auto;padding:1rem;max-width:720px;width:100%;margin:0 auto}
 .panel{display:none}.panel.on{display:block}
 /* Paneles: usar el ancho del iPad; los botones van bajo el nombre y bajan de linea si no caben */
-.main:has(> #t-pnl.on){max-width:1100px}
+.main:has(> #t-pnl.on),.main:has(> #g-paneles.on){max-width:1100px}
 .pnl-acc{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .pnl-acc > *{margin-left:0 !important}
 
@@ -689,6 +689,9 @@ textarea{resize:none;height:88px;line-height:1.5}
     <div class="tab" data-tab="g-pares" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Pares
     </div>
+    <div class="tab" data-tab="g-paneles" onclick="swTab(this,'ger-tabs','s-ger')">
+      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Paneles
+    </div>
     <div class="tab" data-tab="g-mkt" onclick="swTab(this,'ger-tabs','s-ger')">
       <svg viewBox="0 0 24 24"><path d="M20 12v9H4v-9"/><path d="M22 7H2v5h20V7z"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>Marketing
     </div>
@@ -1066,6 +1069,36 @@ textarea{resize:none;height:88px;line-height:1.5}
         <p style="font-size:11px;color:var(--t3);margin-bottom:.7rem"><b>Nota:</b> guardar establece la relación bidireccional (ambos son compañeros el uno del otro).</p>
       </div>
       <div id="pares-list"></div>
+    </div>
+
+    <!-- PANELES -->
+    <div id="g-paneles" class="panel">
+      <div class="card">
+        <div class="ctitle">📋 Paneles de visitadores</div>
+        <p style="font-size:12px;color:var(--t3);margin-bottom:.7rem">Elige un visitador para ver cómo está conformado su panel. Sin elegir, ves el resumen de todos (toca un nombre para abrirlo). "Visitado" se refiere al ciclo actual.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="gp-rep" onchange="renderGerPaneles()" style="flex:2;min-width:180px"></select>
+          <select id="gp-vista" onchange="renderGerPaneles()" style="flex:1;min-width:120px">
+            <option value="med">Médicos</option>
+            <option value="farm">Farmacias</option>
+          </select>
+          <select id="gp-tipo" onchange="renderGerPaneles()" style="flex:1;min-width:110px">
+            <option value="">Ciudad y gira</option>
+            <option value="CIU">Solo ciudad</option>
+            <option value="GIR">Solo gira</option>
+          </select>
+          <select id="gp-estado" onchange="renderGerPaneles()" style="flex:1;min-width:150px">
+            <option value="">Todos</option>
+            <option value="vis">Visitados en el ciclo</option>
+            <option value="novis">No visitados en el ciclo</option>
+            <option value="inc">Datos incompletos (médicos)</option>
+          </select>
+          <input id="gp-buscar" oninput="renderGerPaneles()" placeholder="Buscar nombre, especialidad, ciudad…" style="flex:2;min-width:180px">
+          <button onclick="exportGerPanel()" style="padding:9px 14px;border-radius:7px;border:1px solid #1A5C3A;background:#fff;color:#1A5C3A;font-weight:700;font-size:12.5px;cursor:pointer;font-family:var(--f)">⬇️ Excel</button>
+        </div>
+      </div>
+      <div id="gp-resumen"></div>
+      <div id="gp-lista"></div>
     </div>
 
     <!-- CICLO -->
@@ -2259,7 +2292,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-28-085226';
+const APP_VERSION = '2026-10-28-091447';
 
 async function checkForUpdates() {
   try {
@@ -3125,6 +3158,196 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-solic'){ try{ initGerSolicitudes(); }catch(e){ console.warn('Solic error:', e); } }
   if(el.dataset.tab==='g-pares'){ try{ initGerPares(); }catch(e){ console.warn('Pares error:', e); } }
   if(el.dataset.tab==='g-mkt'){ try{ initGerMarketing(); }catch(e){ console.warn('Marketing error:', e); } }
+  if(el.dataset.tab==='g-paneles'){ try{ initGerPaneles(); }catch(e){ console.warn('Paneles ger error:', e); } }
+}
+
+// ── GERENTE: Paneles (cómo está conformado el panel de cada visitador) ──
+function initGerPaneles(){
+  var sel = document.getElementById('gp-rep');
+  if (sel && sel.options.length <= 1){
+    var prev = sel.value;
+    sel.innerHTML = '<option value="">— Resumen de todos —</option>' + getAllReps().map(function(r){
+      return '<option value="'+esc_(r)+'">'+esc_(r)+'</option>';
+    }).join('');
+    sel.value = prev;
+  }
+  renderGerPaneles();
+}
+function gpVerRep(rep){
+  var sel = document.getElementById('gp-rep');
+  if (sel){ sel.value = rep; renderGerPaneles(); window.scrollTo(0,0); }
+}
+function _gpCompanero(rep){
+  var c = repYCompanero(rep);
+  return c.length > 1 ? c[1] : '';
+}
+// Visitas del rep: qué médicos (por nombre) y farmacias (por código) vio en el ciclo actual, y su última visita
+function _gpVisitas(rep){
+  var cyc = (typeof CYCLE !== 'undefined' && CYCLE) ? CYCLE : null;
+  var med = {}, farm = {}, ult = {}, ultF = {};
+  (visits||[]).forEach(function(v){
+    if (v.rep !== rep || esNE(v)) return;
+    var enCiclo = cyc ? (v.fecha >= cyc.ini && v.fecha <= cyc.fin) : true;
+    if (v.tipo_visita === 'farmacia'){
+      var k = String(v.farmacia_cod||'');
+      if (enCiclo) farm[k] = 1;
+      if (!ultF[k] || v.fecha > ultF[k]) ultF[k] = v.fecha;
+    } else {
+      var n = String(v.medico||'').toUpperCase().trim();
+      if (enCiclo) med[n] = 1;
+      if (!ult[n] || v.fecha > ult[n]) ult[n] = v.fecha;
+    }
+  });
+  return {med: med, farm: farm, ult: ult, ultF: ultF, ciclo: cyc};
+}
+function _gpFilas(rep){
+  var vista = document.getElementById('gp-vista').value;
+  var tipo = document.getElementById('gp-tipo').value;
+  var est = document.getElementById('gp-estado').value;
+  var q = sinTildes(document.getElementById('gp-buscar').value || '').trim();
+  var V = _gpVisitas(rep);
+  var filas;
+  if (vista === 'farm'){
+    filas = (FARM_PANEL[rep]||[]).map(function(f){
+      return {nombre:f.pdv||'', cod:f.cod||'', cadena:f.cadena||'', ciudad:f.ciudad||'', dir:f.dir||'', tipo:f.tipo||'',
+              vis: !!V.farm[String(f.cod)], ult: V.ultF[String(f.cod)]||'', falta: []};
+    });
+  } else {
+    filas = (PANEL[rep]||[]).map(function(m){
+      var n = String(m.nombre||'').toUpperCase().trim();
+      return {nombre:m.nombre||'', esp:m.especialidad||'', ciudad:m.ciudad||'', zona:m.zona||'', dir:m.direccion||'', tipo:m.tipo||'',
+              cedula:m.cedula||'', vis: !!V.med[n], ult: V.ult[n]||'', falta: medFaltantes(m)};
+    });
+  }
+  filas = filas.filter(function(f){
+    if (tipo && f.tipo !== tipo) return false;
+    if (est === 'vis' && !f.vis) return false;
+    if (est === 'novis' && f.vis) return false;
+    if (est === 'inc' && !f.falta.length) return false;
+    if (q){
+      var t = sinTildes([f.nombre, f.esp, f.ciudad, f.zona, f.dir, f.cod, f.cadena].join(' '));
+      if (t.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+  filas.sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
+  return {filas: filas, V: V, vista: vista};
+}
+function _gpChip(txt, col){
+  return '<span style="display:inline-block;padding:5px 10px;border-radius:7px;background:'+col+'1A;color:'+col+';font-size:12px;font-weight:700;margin:0 6px 6px 0">'+txt+'</span>';
+}
+function _gpUlt(f){
+  return (f.ult ? fmtShort(f.ult) : '<span style="color:var(--t3)">—</span>') + (f.vis ? ' <span style="color:#1A5C3A;font-weight:700">✓</span>' : '');
+}
+function renderGerPaneles(){
+  var rep = document.getElementById('gp-rep').value;
+  var res = document.getElementById('gp-resumen');
+  var lst = document.getElementById('gp-lista');
+  var th = 'text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);white-space:nowrap';
+  var td = 'padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top';
+  var tabla = function(head, body){
+    return '<div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+      + '<thead><tr style="background:#F1F6F3">' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  };
+  if (!rep){
+    // Resumen de todos los visitadores
+    var reps = getAllReps().filter(function(r){ return (PANEL[r]||[]).length || (FARM_PANEL[r]||[]).length; });
+    res.innerHTML = '';
+    var R_ = 'text-align:right';
+    lst.innerHTML = tabla(
+      '<th style="'+th+'">Visitador</th><th style="'+th+'">Línea</th><th style="'+th+'">Compañero</th>'
+      + '<th style="'+th+';'+R_+'">Médicos</th><th style="'+th+';'+R_+'">Ciudad</th><th style="'+th+';'+R_+'">Gira</th>'
+      + '<th style="'+th+';'+R_+'">Incompletos</th><th style="'+th+';'+R_+'">Visitados ciclo</th><th style="'+th+';'+R_+'">Farmacias</th>',
+      reps.map(function(r, i){
+        var P = PANEL[r]||[], V = _gpVisitas(r);
+        var ciu = P.filter(function(m){ return m.tipo==='CIU'; }).length;
+        var gir = P.filter(function(m){ return m.tipo==='GIR'; }).length;
+        var inc = P.filter(function(m){ return medFaltantes(m).length; }).length;
+        var vis = P.filter(function(m){ return V.med[String(m.nombre||'').toUpperCase().trim()]; }).length;
+        var pct = P.length ? Math.round(vis/P.length*100) : 0;
+        var comp = _gpCompanero(r);
+        return '<tr style="background:'+(i%2?'#FBFDFC':'#fff')+';cursor:pointer" onclick="gpVerRep(\''+r.replace(/'/g,"\\'")+'\')">'
+          + '<td style="'+td+';font-weight:700;color:#1A5C3A">'+esc_(r)+'</td>'
+          + '<td style="'+td+'">'+esc_(REP_LINEA[r]||'—')+'</td>'
+          + '<td style="'+td+'">'+(comp ? esc_(comp) : '<span style="color:var(--t3)">sin compañero</span>')+'</td>'
+          + '<td style="'+td+';'+R_+';font-weight:700">'+P.length+'</td>'
+          + '<td style="'+td+';'+R_+'">'+ciu+'</td>'
+          + '<td style="'+td+';'+R_+'">'+gir+'</td>'
+          + '<td style="'+td+';'+R_+';color:'+(inc?'#C47A0A':'var(--t3)')+';font-weight:'+(inc?'700':'400')+'">'+inc+'</td>'
+          + '<td style="'+td+';'+R_+'">'+vis+' <span style="color:var(--t3)">('+pct+'%)</span></td>'
+          + '<td style="'+td+';'+R_+'">'+(FARM_PANEL[r]||[]).length+'</td></tr>';
+      }).join(''));
+    return;
+  }
+  var R = _gpFilas(rep), filas = R.filas, V = R.V;
+  var comp = _gpCompanero(rep);
+  var cicloTxt = V.ciclo ? 'Ciclo '+V.ciclo.num+' ('+fmtShort(V.ciclo.ini)+' → '+fmtShort(V.ciclo.fin)+')' : 'sin ciclo definido';
+  var cab = '<div style="font-size:13px;margin-bottom:8px"><b>'+esc_(rep)+'</b> · '+esc_(REP_LINEA[rep]||'')
+    + ' · Compañero: '+(comp?esc_(comp):'sin compañero')+' · '+cicloTxt+'</div>';
+  if (R.vista === 'farm'){
+    var F = FARM_PANEL[rep]||[];
+    var fvis = F.filter(function(f){ return V.farm[String(f.cod)]; }).length;
+    var cad = {};
+    F.forEach(function(f){ cad[f.cadena||'—'] = (cad[f.cadena||'—']||0)+1; });
+    res.innerHTML = '<div class="card">' + cab
+      + _gpChip(F.length+' farmacias','#1A5C3A')
+      + _gpChip(F.filter(function(f){return f.tipo==='CIU';}).length+' ciudad','#1565C0')
+      + _gpChip(F.filter(function(f){return f.tipo==='GIR';}).length+' gira','#8B5CF6')
+      + _gpChip(fvis+' visitadas en el ciclo','#1A5C3A')
+      + '<div style="font-size:11.5px;color:var(--t2);margin-top:4px">'+Object.keys(cad).sort(function(a,b){return cad[b]-cad[a];}).map(function(k){ return esc_(k)+': <b>'+cad[k]+'</b>'; }).join(' · ')+'</div></div>';
+    lst.innerHTML = filas.length
+      ? '<div style="font-size:12px;color:var(--t3);margin:0 0 6px">'+filas.length+' farmacias</div>' + tabla(
+          '<th style="'+th+'">Farmacia</th><th style="'+th+'">Cadena</th><th style="'+th+'">Ciudad</th><th style="'+th+'">Tipo</th><th style="'+th+'">Última visita</th>',
+          filas.map(function(f,i){
+            return '<tr style="background:'+(i%2?'#FBFDFC':'#fff')+'"><td style="'+td+'"><b>'+esc_(f.nombre)+'</b> <span style="color:var(--t3)">('+esc_(f.cod)+')</span><div style="font-size:11px;color:var(--t3)">'+esc_(f.dir)+'</div></td>'
+              + '<td style="'+td+'">'+esc_(f.cadena)+'</td><td style="'+td+'">'+esc_(f.ciudad)+'</td><td style="'+td+'">'+esc_(f.tipo)+'</td>'
+              + '<td style="'+td+';white-space:nowrap">'+_gpUlt(f)+'</td></tr>';
+          }).join(''))
+      : '<div class="empty"><p>Sin farmacias con ese filtro.</p></div>';
+    return;
+  }
+  var P = PANEL[rep]||[];
+  var vis = P.filter(function(m){ return V.med[String(m.nombre||'').toUpperCase().trim()]; }).length;
+  var inc = P.filter(function(m){ return medFaltantes(m).length; }).length;
+  var esp = {};
+  P.forEach(function(m){ var e = (m.especialidad||'SIN ESPECIALIDAD').toUpperCase(); esp[e] = (esp[e]||0)+1; });
+  res.innerHTML = '<div class="card">' + cab
+    + _gpChip(P.length+' médicos','#1A5C3A')
+    + _gpChip(P.filter(function(m){return m.tipo==='CIU';}).length+' ciudad','#1565C0')
+    + _gpChip(P.filter(function(m){return m.tipo==='GIR';}).length+' gira','#8B5CF6')
+    + _gpChip(vis+' visitados en el ciclo ('+(P.length?Math.round(vis/P.length*100):0)+'%)','#1A5C3A')
+    + _gpChip(inc+' con datos incompletos','#C47A0A')
+    + '<details style="margin-top:4px"><summary style="font-size:12px;color:var(--t2);cursor:pointer">Por especialidad ('+Object.keys(esp).length+')</summary><div style="font-size:11.5px;color:var(--t2);margin-top:6px;line-height:1.8">'
+    + Object.keys(esp).sort(function(a,b){return esp[b]-esp[a];}).map(function(k){ return esc_(k)+': <b>'+esp[k]+'</b>'; }).join(' · ')+'</div></details></div>';
+  lst.innerHTML = filas.length
+    ? '<div style="font-size:12px;color:var(--t3);margin:0 0 6px">'+filas.length+' médicos</div>' + tabla(
+        '<th style="'+th+'">Médico</th><th style="'+th+'">Especialidad</th><th style="'+th+'">Ciudad / zona</th><th style="'+th+'">Tipo</th><th style="'+th+'">Cédula</th><th style="'+th+'">Última visita</th>',
+        filas.map(function(f,i){
+          return '<tr style="background:'+(i%2?'#FBFDFC':'#fff')+'"><td style="'+td+'"><b>'+esc_(f.nombre)+'</b><div style="font-size:11px;color:var(--t3)">'+esc_(f.dir)+'</div>'
+            + (f.falta.length?'<div style="font-size:11px;color:#C47A0A;margin-top:2px">⚠️ Falta: '+esc_(f.falta.join(', '))+'</div>':'')+'</td>'
+            + '<td style="'+td+'">'+esc_(f.esp)+'</td><td style="'+td+'">'+esc_(f.ciudad)+(f.zona?'<div style="font-size:11px;color:var(--t3)">'+esc_(f.zona)+'</div>':'')+'</td>'
+            + '<td style="'+td+'">'+esc_(f.tipo)+'</td><td style="'+td+';font-family:monospace;font-size:11.5px">'+esc_(f.cedula||'—')+'</td>'
+            + '<td style="'+td+';white-space:nowrap">'+_gpUlt(f)+'</td></tr>';
+        }).join(''))
+    : '<div class="empty"><p>Sin médicos con ese filtro.</p></div>';
+}
+function exportGerPanel(){
+  if (typeof XLSX === 'undefined'){ alert('No se pudo cargar el generador de Excel. Revisa la conexión.'); return; }
+  var rep = document.getElementById('gp-rep').value;
+  var reps = rep ? [rep] : getAllReps().filter(function(r){ return (PANEL[r]||[]).length || (FARM_PANEL[r]||[]).length; });
+  var vista = document.getElementById('gp-vista').value;
+  var rows = [];
+  reps.forEach(function(r){
+    _gpFilas(r).filas.forEach(function(f){
+      rows.push(vista === 'farm'
+        ? {Visitador:r, Codigo:f.cod, Farmacia:f.nombre, Cadena:f.cadena, Ciudad:f.ciudad, Direccion:f.dir, Tipo:f.tipo, 'Ultima visita':f.ult, 'Visitada en ciclo':f.vis?'SI':'NO'}
+        : {Visitador:r, Medico:f.nombre, Especialidad:f.esp, Ciudad:f.ciudad, Zona:f.zona, Direccion:f.dir, Tipo:f.tipo, Cedula:f.cedula, 'Ultima visita':f.ult, 'Visitado en ciclo':f.vis?'SI':'NO', 'Datos faltantes':f.falta.join(', ')});
+    });
+  });
+  if (!rows.length){ alert('No hay filas para exportar con ese filtro.'); return; }
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), vista === 'farm' ? 'Farmacias' : 'Medicos');
+  XLSX.writeFile(wb, 'Panel_' + (rep ? rep.replace(/\s+/g,'_') : 'TODOS') + '_' + (vista === 'farm' ? 'farmacias' : 'medicos') + '.xlsx');
 }
 
 // ── GERENTE: Solicitudes de panel (médicos + farmacias) ──
