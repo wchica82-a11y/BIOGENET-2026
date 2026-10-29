@@ -2292,7 +2292,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-28-103610';
+const APP_VERSION = '2026-10-29-111532';
 
 async function checkForUpdates() {
   try {
@@ -3583,9 +3583,16 @@ async function loadRepPairs(){
 }
 async function loadPanelSolicitudes(){
   try {
-    var rows = await sbRequest('GET', '/panel_solicitudes?order=created_at.desc&limit=500');
-    PANEL_SOLICITUDES = rows || [];
-  } catch(e){ console.warn('loadPanelSolicitudes falló:', e.message); PANEL_SOLICITUDES = []; }
+    // Supabase entrega máximo 1000 filas por consulta: se pagina para traerlas todas
+    var all = [], off = 0;
+    while (true) {
+      var rows = await sbRequest('GET', '/panel_solicitudes?order=created_at.desc,id.desc&limit=1000&offset=' + off);
+      all = all.concat(rows || []);
+      if (!rows || rows.length < 1000) break;
+      off += 1000;
+    }
+    PANEL_SOLICITUDES = all;
+  } catch(e){ console.warn('loadPanelSolicitudes falló:', e.message); } // sin red: se conserva la última lista
 }
 async function loadPanelOverrides(){
   try {
@@ -4155,6 +4162,8 @@ async function submitSolicitudAlta(){
   };
   if (!data.cedula){ alert('La cédula es obligatoria: con ella se verifica que el médico no esté ya en el panel.'); return; }
   if (!_cedValida(data.cedula) && !confirm('La cédula ' + data.cedula + ' no es una cédula ecuatoriana válida. Revisa los dígitos.\n\nSi es el pasaporte de un médico extranjero, acepta para continuar.')) return;
+  // Lo descargado al iniciar sesión puede estar viejo (p. ej. altas ya rechazadas): se consulta de nuevo
+  try { await loadPanelSolicitudes(); } catch(e){}
   var dup = _altaDuplicados(data, CU);
   if (dup.propio.length){
     var h = dup.propio[0];
