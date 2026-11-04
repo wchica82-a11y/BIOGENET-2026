@@ -2313,7 +2313,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-04-103534';
+const APP_VERSION = '2026-11-04-123024';
 
 async function checkForUpdates() {
   try {
@@ -3625,8 +3625,15 @@ async function loadPanelOverrides(){
     if (!REP_PAIRS || Object.keys(REP_PAIRS).length === 0){
       if (typeof loadRepPairs === 'function') { try { await loadRepPairs(); } catch(e){} }
     }
-    var rows = await sbRequest('GET', '/panel_overrides?order=created_at.asc,id.asc&limit=1000');
-    PANEL_OVERRIDES = rows || [];
+    // Supabase entrega máximo 1000 filas por consulta: se pagina para traerlas todas
+    var all = [], off = 0;
+    while (true) {
+      var rows = await sbRequest('GET', '/panel_overrides?order=created_at.asc,id.asc&limit=1000&offset=' + off);
+      all = all.concat(rows || []);
+      if (!rows || rows.length < 1000) break;
+      off += 1000;
+    }
+    PANEL_OVERRIDES = all;
     applyPanelOverrides();
   } catch(e){ console.warn('loadPanelOverrides falló:', e.message); }
 }
