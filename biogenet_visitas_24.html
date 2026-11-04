@@ -804,14 +804,18 @@ textarea{resize:none;height:88px;line-height:1.5}
       </div>
       <div class="card">
         <div class="ctitle">🗓️ Días sin trabajo de campo</div>
-        <p style="font-size:12px;color:var(--t3);margin-bottom:.6rem">Feriados, cierres de ciclo o trabajo de oficina. Esos días no suman a la meta ni a la cobertura esperada (Diario y comunicado), para todos los visitadores. Lo que se haya visitado ese día sí cuenta.</p>
+        <p style="font-size:12px;color:var(--t3);margin-bottom:.6rem">Feriados, cierres de ciclo, trabajo de oficina o permisos. Esos días no suman a la meta ni a la cobertura esperada (Diario y comunicado), para todos o para un solo visitador. Lo que se haya visitado ese día sí cuenta.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input type="date" id="dnl-fecha" style="margin-bottom:0;flex:1;min-width:140px">
+          <select id="dnl-rep" style="margin-bottom:0;flex:2;min-width:180px"><option value="">Todos los visitadores</option></select>
+          <label style="font-size:11.5px;color:var(--t2);flex:1;min-width:140px">Desde<input type="date" id="dnl-fecha" style="margin-bottom:0;width:100%"></label>
+          <label style="font-size:11.5px;color:var(--t2);flex:1;min-width:140px">Hasta (opcional)<input type="date" id="dnl-hasta" style="margin-bottom:0;width:100%"></label>
           <select id="dnl-motivo" style="margin-bottom:0;flex:1;min-width:160px">
             <option>Feriado</option>
             <option>Cierre de ciclo</option>
             <option>Trabajo de oficina</option>
             <option>Reunión</option>
+            <option>Permiso médico</option>
+            <option>Vacaciones</option>
             <option>Otro</option>
           </select>
           <button onclick="agregarDiaNoLab()" style="padding:9px 14px;border-radius:7px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;font-family:var(--f)">+ Agregar</button>
@@ -2309,7 +2313,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-04-093412';
+const APP_VERSION = '2026-11-04-095806';
 
 async function checkForUpdates() {
   try {
@@ -6145,7 +6149,7 @@ function calcComunicado(rep){
   for (var d = new Date(cy.ini + 'T12:00:00'); d <= new Date(cy.fin + 'T12:00:00'); d.setDate(d.getDate() + 1)) {
     dias.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
   }
-  var esLab = function(x){ if (diaNoLab(x)) return false; var w = new Date(x + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
+  var esLab = function(x){ if (diaNoLab(x, rep)) return false; var w = new Date(x + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
   var habTot   = dias.filter(esLab).length;
   var habTrans = dias.filter(function(x){ return esLab(x) && x <= corte; }).length;
   var habRest  = habTot - habTrans;
@@ -7219,24 +7223,50 @@ function initDiarioMes(){
     rsel.value = prev;
   }
 }
-// Días sin trabajo de campo (config "dias_no_laborables"): [{fecha:'YYYY-MM-DD', motivo:'Feriado'}]
+// Días sin trabajo de campo (config "dias_no_laborables"):
+// [{fecha:'YYYY-MM-DD', motivo:'Feriado'}] para todos; con rep:'NOMBRE' solo para ese visitador
 var DIAS_NO_LAB = [];
-function diaNoLab(d){
-  var x = (DIAS_NO_LAB||[]).find(function(o){ return o.fecha === d; });
+function diaNoLab(d, rep){
+  var x = (DIAS_NO_LAB||[]).find(function(o){ return o.fecha === d && (!o.rep || o.rep === rep); });
   return x ? (x.motivo || 'Sin trabajo de campo') : null;
 }
 async function loadDiasNoLab(){
   var v = await getCloudConfig('dias_no_laborables');
   if (Array.isArray(v)) DIAS_NO_LAB = v;
 }
+function _dnlFecha(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+// Siguiente día de lunes a viernes
+function _dnlSigLab(f){
+  var d = new Date(f + 'T12:00:00');
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  return _dnlFecha(d);
+}
+// Agrupa días seguidos del mismo visitador y motivo para mostrarlos como un rango
+function _dnlGrupos(){
+  var l = (DIAS_NO_LAB||[]).slice().sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
+  var grupos = [];
+  l.forEach(function(o){
+    var g = grupos.find(function(x){ return (x.rep||'') === (o.rep||'') && x.motivo === o.motivo && _dnlSigLab(x.hasta) === o.fecha; });
+    if (g) g.hasta = o.fecha;
+    else grupos.push({rep: o.rep||'', motivo: o.motivo, desde: o.fecha, hasta: o.fecha});
+  });
+  return grupos.sort(function(a,b){ return b.desde.localeCompare(a.desde); });
+}
 function renderDiasNoLab(){
+  var sel = document.getElementById('dnl-rep');
+  if (sel && sel.options.length <= 1){
+    getAllReps().forEach(function(r){ var op = document.createElement('option'); op.value = r; op.textContent = r; sel.appendChild(op); });
+  }
   var el = document.getElementById('dnl-lista');
   if (!el) return;
-  var l = (DIAS_NO_LAB||[]).slice().sort(function(a,b){ return b.fecha.localeCompare(a.fecha); });
-  el.innerHTML = l.length ? l.map(function(o){
-    return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;margin:0 6px 6px 0;border-radius:7px;background:#ECEFF1;font-size:12px">'
-      + '<b>' + esc_(_comDia(o.fecha)) + ' ' + o.fecha.slice(0,4) + '</b> ' + esc_(o.motivo||'')
-      + '<button onclick="quitarDiaNoLab(\'' + o.fecha + '\')" title="Quitar" style="border:none;background:none;color:#C0392B;font-weight:700;cursor:pointer;font-size:13px;padding:0 3px">✕</button></span>';
+  var gs = _dnlGrupos();
+  el.innerHTML = gs.length ? gs.map(function(g, i){
+    return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;margin:0 6px 6px 0;border-radius:7px;background:' + (g.rep ? '#FFF3E0' : '#ECEFF1') + ';font-size:12px">'
+      + '<b>' + esc_(_comDia(g.desde)) + (g.hasta !== g.desde ? ' → ' + esc_(_comDia(g.hasta)) : '') + ' ' + g.hasta.slice(0,4) + '</b> ' + esc_(g.motivo||'')
+      + ' · ' + (g.rep ? '<b>' + esc_(g.rep) + '</b>' : 'Todos')
+      + '<button onclick="quitarDiaNoLab(' + i + ')" title="Quitar" style="border:none;background:none;color:#C0392B;font-weight:700;cursor:pointer;font-size:13px;padding:0 3px">✕</button></span>';
   }).join('') : '<div style="font-size:12px;color:var(--t3)">Ningún día registrado.</div>';
 }
 async function _guardarDiasNoLab(lista){
@@ -7249,16 +7279,33 @@ async function _guardarDiasNoLab(lista){
 }
 async function agregarDiaNoLab(){
   var f = document.getElementById('dnl-fecha').value;
+  var h = document.getElementById('dnl-hasta').value || f;
   var m = document.getElementById('dnl-motivo').value;
+  var rep = document.getElementById('dnl-rep').value;
   if (!f){ alert('Selecciona la fecha.'); return; }
-  if (diaNoLab(f)){ alert('Ese día ya está registrado.'); return; }
-  var w = new Date(f + 'T12:00:00').getDay();
-  if ((w === 0 || w === 6) && !confirm('Ese día cae en fin de semana y ya no cuenta para la meta. ¿Agregarlo igual?')) return;
-  if (await _guardarDiasNoLab((DIAS_NO_LAB||[]).concat([{fecha: f, motivo: m}]))) document.getElementById('dnl-fecha').value = '';
+  if (h < f){ alert('La fecha "hasta" no puede ser anterior a "desde".'); return; }
+  var nuevos = [];
+  for (var d = new Date(f + 'T12:00:00'); _dnlFecha(d) <= h; d.setDate(d.getDate() + 1)) {
+    var x = _dnlFecha(d), w = d.getDay();
+    if (w === 0 || w === 6 || diaNoLab(x, rep || undefined)) continue;
+    var o = {fecha: x, motivo: m};
+    if (rep) o.rep = rep;
+    nuevos.push(o);
+  }
+  if (!nuevos.length){ alert('No hay días nuevos para agregar: ese rango cae en fin de semana o ya está registrado.'); return; }
+  if (nuevos.length > 1 && !confirm('Se registrarán ' + nuevos.length + ' días de lunes a viernes para ' + (rep || 'todos los visitadores') + '. ¿Continuar?')) return;
+  if (await _guardarDiasNoLab((DIAS_NO_LAB||[]).concat(nuevos))) {
+    document.getElementById('dnl-fecha').value = '';
+    document.getElementById('dnl-hasta').value = '';
+  }
 }
-async function quitarDiaNoLab(f){
-  if (!confirm('¿Quitar ' + f + '? Ese día volverá a contar para la meta.')) return;
-  await _guardarDiasNoLab((DIAS_NO_LAB||[]).filter(function(o){ return o.fecha !== f; }));
+async function quitarDiaNoLab(i){
+  var g = _dnlGrupos()[i];
+  if (!g) return;
+  if (!confirm('¿Quitar ' + g.desde + (g.hasta !== g.desde ? ' a ' + g.hasta : '') + ' (' + (g.rep || 'todos') + ')? Volverá a contar para la meta.')) return;
+  await _guardarDiasNoLab((DIAS_NO_LAB||[]).filter(function(o){
+    return !((o.rep||'') === g.rep && o.motivo === g.motivo && o.fecha >= g.desde && o.fecha <= g.hasta);
+  }));
 }
 
 function renderDiario(){
@@ -7307,14 +7354,16 @@ function renderDiario(){
   const META_CIU=12, META_GIR=14, META_FARM=5;
 
   const hoyISO = todayISO();
-  const esHabil = function(d){
+  const esHabil = function(d, rep){
     if (d > hoyISO) return false;                    // solo dias transcurridos
-    if (diaNoLab(d)) return false;                   // feriado, cierre de ciclo, oficina
+    if (diaNoLab(d, rep)) return false;              // feriado, cierre de ciclo, oficina, permiso
     var w = new Date(d+'T12:00:00').getDay();
     return w >= 1 && w <= 5;                          // lunes a viernes
   };
-  const diasHabiles = days.filter(esHabil).length;
-  const descontados = days.filter(function(d){ return d <= hoyISO && diaNoLab(d); });
+  // Con un visitador elegido se ven también sus días propios; en la vista general, los de todos
+  const repVista = repFil || undefined;
+  const diasHabiles = days.filter(function(d){ return esHabil(d, repVista); }).length;
+  const descontados = days.filter(function(d){ return d <= hoyISO && diaNoLab(d, repVista); });
   const esGir = function(v){ return String(v.tipo_panel||'').toUpperCase().indexOf('GIR') === 0; };
 
   // Build matrices: rep -> day -> visits
@@ -7344,7 +7393,7 @@ function renderDiario(){
     const m = d.slice(5,7);
     const isToday = d===today;
     const dow = new Date(d+'T12:00:00').getDay();
-    const motivoNL = diaNoLab(d);
+    const motivoNL = diaNoLab(d, repVista);
     const isWeekend = dow===0||dow===6||!!motivoNL;
     // Mostrar mes pequeño cuando cambia
     let mLabel = '';
@@ -7368,7 +7417,7 @@ function renderDiario(){
   th+=`<tr>`;
   days.forEach(d=>{
     const dow=new Date(d+'T12:00:00').getDay();
-    const isWeekend=dow===0||dow===6||!!diaNoLab(d);
+    const isWeekend=dow===0||dow===6||!!diaNoLab(d, repVista);
     th+=`<th style="font-size:9px;font-weight:600;color:#2E7D32;padding:3px 2px;border-top:1px solid #C8E6C9;${isWeekend?'opacity:.35':''}">M</th>`;
     th+=`<th style="font-size:9px;font-weight:600;color:#1565C0;padding:3px 2px;border-top:1px solid #BBDEFB;${isWeekend?'opacity:.35':''}">F</th>`;
   });
@@ -7404,7 +7453,7 @@ function renderDiario(){
     let realCiu=0, realGir=0, habCiu=0, habGir=0;
     days.forEach(function(d){
       (matMed[rep][d]||[]).forEach(function(v){ esGir(v) ? realGir++ : realCiu++; });
-      if (!esHabil(d)) return;
+      if (!esHabil(d, rep)) return;
       tipoDia[rep][d]==='GIR' ? habGir++ : habCiu++;
     });
     const metaCiu  = habCiu*META_CIU;
@@ -7417,7 +7466,7 @@ function renderDiario(){
       const med=matMed[rep][d].length;
       const farm=matFarm[rep][d].length;
       const dow=new Date(d+'T12:00:00').getDay();
-      const motivoNL=diaNoLab(d);
+      const motivoNL=diaNoLab(d, rep);
       const isWeekend=dow===0||dow===6||!!motivoNL;
       const isToday=d===today;
       const todayOutline=isToday?'outline:2px solid var(--g);outline-offset:-2px;':'';
@@ -7498,7 +7547,7 @@ function renderDiario(){
     '<b>Período:</b> ' + periodLabel + ' · ' + days.length + ' días' +
     (repFil ? ' · <b>' + repFil + '</b>' : '') +
     '<div style="font-size:11.5px;color:var(--t2);margin-top:3px">' +
-      '<b>' + diasHabiles + '</b> días hábiles transcurridos (lun-vie, hasta hoy' + (descontados.length ? ', sin contar ' + descontados.map(function(d){ return _comDia(d) + ' (' + diaNoLab(d) + ')'; }).join(', ') : '') + '). ' +
+      '<b>' + diasHabiles + '</b> días hábiles transcurridos (lun-vie, hasta hoy' + (descontados.length ? ', sin contar ' + descontados.map(function(d){ return _comDia(d) + ' (' + diaNoLab(d, repVista) + ')'; }).join(', ') : '') + '). ' +
       'Cada jornada se clasifica como <b>ciudad</b> (' + META_CIU + ' médicos) o <b>gira</b> (' + META_GIR +
       ') según el tipo de los médicos visitados ese día; sin visitas se asume ciudad. ' +
       'Farmacias: ' + META_FARM + ' por día.' +
