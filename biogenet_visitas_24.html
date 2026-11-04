@@ -2313,7 +2313,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-04-095806';
+const APP_VERSION = '2026-11-04-103534';
 
 async function checkForUpdates() {
   try {
@@ -3353,7 +3353,6 @@ function renderGerPaneles(){
     : '<div class="empty"><p>Sin médicos con ese filtro.</p></div>';
 }
 function exportGerPanel(){
-  if (typeof XLSX === 'undefined'){ alert('No se pudo cargar el generador de Excel. Revisa la conexión.'); return; }
   var rep = document.getElementById('gp-rep').value;
   var reps = rep ? [rep] : getAllReps().filter(function(r){ return (PANEL[r]||[]).length || (FARM_PANEL[r]||[]).length; });
   var vista = document.getElementById('gp-vista').value;
@@ -3366,9 +3365,11 @@ function exportGerPanel(){
     });
   });
   if (!rows.length){ alert('No hay filas para exportar con ese filtro.'); return; }
-  var wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), vista === 'farm' ? 'Farmacias' : 'Medicos');
-  XLSX.writeFile(wb, 'Panel_' + (rep ? rep.replace(/\s+/g,'_') : 'TODOS') + '_' + (vista === 'farm' ? 'farmacias' : 'medicos') + '.xlsx');
+  gerEnsureXLSX(function(){
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), vista === 'farm' ? 'Farmacias' : 'Medicos');
+    XLSX.writeFile(wb, 'Panel_' + (rep ? rep.replace(/\s+/g,'_') : 'TODOS') + '_' + (vista === 'farm' ? 'farmacias' : 'medicos') + '.xlsx');
+  });
 }
 
 // ── GERENTE: Solicitudes de panel (médicos + farmacias) ──
