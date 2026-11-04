@@ -802,6 +802,22 @@ textarea{resize:none;height:88px;line-height:1.5}
           <select id="g-diario-rep" onchange="renderDiario()" style="margin-bottom:0;min-width:220px"><option value="">Todos los representantes</option></select>
         </div>
       </div>
+      <div class="card">
+        <div class="ctitle">🗓️ Días sin trabajo de campo</div>
+        <p style="font-size:12px;color:var(--t3);margin-bottom:.6rem">Feriados, cierres de ciclo o trabajo de oficina. Esos días no suman a la meta ni a la cobertura esperada (Diario y comunicado), para todos los visitadores. Lo que se haya visitado ese día sí cuenta.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="date" id="dnl-fecha" style="margin-bottom:0;flex:1;min-width:140px">
+          <select id="dnl-motivo" style="margin-bottom:0;flex:1;min-width:160px">
+            <option>Feriado</option>
+            <option>Cierre de ciclo</option>
+            <option>Trabajo de oficina</option>
+            <option>Reunión</option>
+            <option>Otro</option>
+          </select>
+          <button onclick="agregarDiaNoLab()" style="padding:9px 14px;border-radius:7px;border:1px solid #1A5C3A;background:#1A5C3A;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;font-family:var(--f)">+ Agregar</button>
+        </div>
+        <div id="dnl-lista" style="margin-top:.6rem"></div>
+      </div>
       <div style="overflow-x:auto;margin-bottom:.9rem">
         <div id="g-diario-table"></div>
       </div>
@@ -1931,6 +1947,7 @@ async function syncFromCloud(user){
       }
       var unNom = await getCloudConfig('medicos_un_nombre');
       if (Array.isArray(unNom)) MED_UN_NOMBRE = unNom;
+      await loadDiasNoLab();
       var cloudHistory = await getCloudConfig('cycles_history');
       if (cloudHistory && Array.isArray(cloudHistory)) {
         CYCLES_HISTORY = cloudHistory;
@@ -2292,7 +2309,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-10-29-111532';
+const APP_VERSION = '2026-11-04-093412';
 
 async function checkForUpdates() {
   try {
@@ -3135,7 +3152,7 @@ function swTab(el,tabsId,screenId){
   if(el.dataset.tab==='g-cob'){ initCobCicloFilter(); renderCobertura(); }
   if(el.dataset.tab==='g-vis'){ initGVisCiclos(); renderGVis(); }
   if(el.dataset.tab==='g-disp'){ initDispositivosPanel(); }
-  if(el.dataset.tab==='g-diario'){ initDiarioMes(); renderDiario(); }
+  if(el.dataset.tab==='g-diario'){ initDiarioMes(); renderDiario(); renderDiasNoLab(); loadDiasNoLab().then(function(){ renderDiasNoLab(); renderDiario(); }).catch(function(){}); }
   if(el.dataset.tab==='g-sync'){ renderSyncStatus(); }
   if(el.dataset.tab==='g-delauth'){ initDelAuth(); }
   if(el.dataset.tab==='g-ne') renderNE();
@@ -6128,7 +6145,7 @@ function calcComunicado(rep){
   for (var d = new Date(cy.ini + 'T12:00:00'); d <= new Date(cy.fin + 'T12:00:00'); d.setDate(d.getDate() + 1)) {
     dias.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
   }
-  var esLab = function(x){ var w = new Date(x + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
+  var esLab = function(x){ if (diaNoLab(x)) return false; var w = new Date(x + 'T12:00:00').getDay(); return w >= 1 && w <= 5; };
   var habTot   = dias.filter(esLab).length;
   var habTrans = dias.filter(function(x){ return esLab(x) && x <= corte; }).length;
   var habRest  = habTot - habTrans;
@@ -7202,6 +7219,48 @@ function initDiarioMes(){
     rsel.value = prev;
   }
 }
+// Días sin trabajo de campo (config "dias_no_laborables"): [{fecha:'YYYY-MM-DD', motivo:'Feriado'}]
+var DIAS_NO_LAB = [];
+function diaNoLab(d){
+  var x = (DIAS_NO_LAB||[]).find(function(o){ return o.fecha === d; });
+  return x ? (x.motivo || 'Sin trabajo de campo') : null;
+}
+async function loadDiasNoLab(){
+  var v = await getCloudConfig('dias_no_laborables');
+  if (Array.isArray(v)) DIAS_NO_LAB = v;
+}
+function renderDiasNoLab(){
+  var el = document.getElementById('dnl-lista');
+  if (!el) return;
+  var l = (DIAS_NO_LAB||[]).slice().sort(function(a,b){ return b.fecha.localeCompare(a.fecha); });
+  el.innerHTML = l.length ? l.map(function(o){
+    return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;margin:0 6px 6px 0;border-radius:7px;background:#ECEFF1;font-size:12px">'
+      + '<b>' + esc_(_comDia(o.fecha)) + ' ' + o.fecha.slice(0,4) + '</b> ' + esc_(o.motivo||'')
+      + '<button onclick="quitarDiaNoLab(\'' + o.fecha + '\')" title="Quitar" style="border:none;background:none;color:#C0392B;font-weight:700;cursor:pointer;font-size:13px;padding:0 3px">✕</button></span>';
+  }).join('') : '<div style="font-size:12px;color:var(--t3)">Ningún día registrado.</div>';
+}
+async function _guardarDiasNoLab(lista){
+  if (await setCloudConfig('dias_no_laborables', lista)) {
+    DIAS_NO_LAB = lista; renderDiasNoLab(); renderDiario();
+    return true;
+  }
+  alert('No se pudo guardar.');
+  return false;
+}
+async function agregarDiaNoLab(){
+  var f = document.getElementById('dnl-fecha').value;
+  var m = document.getElementById('dnl-motivo').value;
+  if (!f){ alert('Selecciona la fecha.'); return; }
+  if (diaNoLab(f)){ alert('Ese día ya está registrado.'); return; }
+  var w = new Date(f + 'T12:00:00').getDay();
+  if ((w === 0 || w === 6) && !confirm('Ese día cae en fin de semana y ya no cuenta para la meta. ¿Agregarlo igual?')) return;
+  if (await _guardarDiasNoLab((DIAS_NO_LAB||[]).concat([{fecha: f, motivo: m}]))) document.getElementById('dnl-fecha').value = '';
+}
+async function quitarDiaNoLab(f){
+  if (!confirm('¿Quitar ' + f + '? Ese día volverá a contar para la meta.')) return;
+  await _guardarDiasNoLab((DIAS_NO_LAB||[]).filter(function(o){ return o.fecha !== f; }));
+}
+
 function renderDiario(){
   const sel = document.getElementById('g-diario-mes')?.value || todayISO().slice(0,7);
   
@@ -7250,10 +7309,12 @@ function renderDiario(){
   const hoyISO = todayISO();
   const esHabil = function(d){
     if (d > hoyISO) return false;                    // solo dias transcurridos
+    if (diaNoLab(d)) return false;                   // feriado, cierre de ciclo, oficina
     var w = new Date(d+'T12:00:00').getDay();
     return w >= 1 && w <= 5;                          // lunes a viernes
   };
   const diasHabiles = days.filter(esHabil).length;
+  const descontados = days.filter(function(d){ return d <= hoyISO && diaNoLab(d); });
   const esGir = function(v){ return String(v.tipo_panel||'').toUpperCase().indexOf('GIR') === 0; };
 
   // Build matrices: rep -> day -> visits
@@ -7283,7 +7344,8 @@ function renderDiario(){
     const m = d.slice(5,7);
     const isToday = d===today;
     const dow = new Date(d+'T12:00:00').getDay();
-    const isWeekend = dow===0||dow===6;
+    const motivoNL = diaNoLab(d);
+    const isWeekend = dow===0||dow===6||!!motivoNL;
     // Mostrar mes pequeño cuando cambia
     let mLabel = '';
     if (m !== prevMonth) {
@@ -7291,7 +7353,7 @@ function renderDiario(){
       mLabel = '<div style="font-size:8px;color:var(--t3);text-transform:uppercase;font-weight:600;letter-spacing:.04em">' + monthAbbr + '</div>';
       prevMonth = m;
     }
-    th+=`<th colspan="2" style="min-width:${colW}px;text-align:center;font-size:10px;padding:4px 0;${isToday?'color:var(--g);font-weight:800':''}${isWeekend?';opacity:.35':''}">${mLabel}${dn}</th>`;
+    th+=`<th colspan="2"${motivoNL?` title="${esc_(motivoNL)}"`:''} style="min-width:${colW}px;text-align:center;font-size:10px;padding:4px 0;${isToday?'color:var(--g);font-weight:800':''}${isWeekend?';opacity:.35':''}">${mLabel}${dn}</th>`;
   });
   const grpTh = function(tit,sub,col){
     return '<th colspan="3" style="text-align:center;min-width:132px;padding:6px 4px;font-size:10.5px;'
@@ -7306,7 +7368,7 @@ function renderDiario(){
   th+=`<tr>`;
   days.forEach(d=>{
     const dow=new Date(d+'T12:00:00').getDay();
-    const isWeekend=dow===0||dow===6;
+    const isWeekend=dow===0||dow===6||!!diaNoLab(d);
     th+=`<th style="font-size:9px;font-weight:600;color:#2E7D32;padding:3px 2px;border-top:1px solid #C8E6C9;${isWeekend?'opacity:.35':''}">M</th>`;
     th+=`<th style="font-size:9px;font-weight:600;color:#1565C0;padding:3px 2px;border-top:1px solid #BBDEFB;${isWeekend?'opacity:.35':''}">F</th>`;
   });
@@ -7355,7 +7417,8 @@ function renderDiario(){
       const med=matMed[rep][d].length;
       const farm=matFarm[rep][d].length;
       const dow=new Date(d+'T12:00:00').getDay();
-      const isWeekend=dow===0||dow===6;
+      const motivoNL=diaNoLab(d);
+      const isWeekend=dow===0||dow===6||!!motivoNL;
       const isToday=d===today;
       const todayOutline=isToday?'outline:2px solid var(--g);outline-offset:-2px;':'';
 
@@ -7367,9 +7430,10 @@ function renderDiario(){
       // Las jornadas de gira se marcan: piden 14 en vez de 12, y sin una
       // senal visible el naranja de un dia con 13 parecia un error.
       const marcaGira = esGira ? 'box-shadow:inset 3px 0 0 #00695C;' : '';
-      const tipTexto  = (esGira?'Gira':'Ciudad') + ' · meta ' + metaHoy + ' · ' + med + ' visitado' + (med===1?'':'s');
+      const tipTexto  = motivoNL ? motivoNL + ' · sin meta · ' + med + ' visitado' + (med===1?'':'s') : (esGira?'Gira':'Ciudad') + ' · meta ' + metaHoy + ' · ' + med + ' visitado' + (med===1?'':'s');
       let medBg,medCol;
       if(med===0){ medBg=isWeekend?'#F5F3EF':'var(--s)'; medCol=isWeekend?'var(--b2)':'var(--t3)'; }
+      else if(motivoNL){ medBg='#78909C'; medCol='#fff'; }
       else if(med<=metaHoy-3){ medBg='#C62828'; medCol='#fff'; }
       else if(med<metaHoy){ medBg='#E65100'; medCol='#fff'; }
       else { medBg='#2E7D32'; medCol='#fff'; }
@@ -7383,6 +7447,7 @@ function renderDiario(){
       // ≤3: rojo, 4: naranja, 5 o mas: azul
       let farmBg,farmCol;
       if(farm===0){ farmBg=isWeekend?'#F5F3EF':'var(--s)'; farmCol=isWeekend?'var(--b2)':'var(--t3)'; }
+      else if(motivoNL){ farmBg='#78909C'; farmCol='#fff'; }
       else if(farm<=3){ farmBg='#B71C1C'; farmCol='#fff'; }
       else if(farm===4){ farmBg='#BF360C'; farmCol='#fff'; }
       else { farmBg='#1565C0'; farmCol='#fff'; }   // 5 o mas: meta cumplida
@@ -7421,6 +7486,7 @@ function renderDiario(){
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#E65100;border-radius:2px"></span>1-2 bajo la meta</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#2E7D32;border-radius:2px"></span>meta o más ✓</span>
     <span style="display:flex;align-items:center;gap:3px" title="Las jornadas de gira piden ${META_GIR} en vez de ${META_CIU}"><span style="display:inline-block;width:12px;height:12px;background:#EEE;box-shadow:inset 3px 0 0 #00695C;border-radius:2px"></span>jornada de gira (meta ${META_GIR})</span>
+    <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#78909C;border-radius:2px"></span>día sin trabajo de campo (sin meta)</span>
     <span style="margin-left:8px"><b>Farmacias (meta ${META_FARM}/día):</b></span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#B71C1C;border-radius:2px"></span>≤3</span>
     <span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:12px;height:12px;background:#BF360C;border-radius:2px"></span>4</span>
@@ -7432,7 +7498,7 @@ function renderDiario(){
     '<b>Período:</b> ' + periodLabel + ' · ' + days.length + ' días' +
     (repFil ? ' · <b>' + repFil + '</b>' : '') +
     '<div style="font-size:11.5px;color:var(--t2);margin-top:3px">' +
-      '<b>' + diasHabiles + '</b> días hábiles transcurridos (lun-vie, hasta hoy). ' +
+      '<b>' + diasHabiles + '</b> días hábiles transcurridos (lun-vie, hasta hoy' + (descontados.length ? ', sin contar ' + descontados.map(function(d){ return _comDia(d) + ' (' + diaNoLab(d) + ')'; }).join(', ') : '') + '). ' +
       'Cada jornada se clasifica como <b>ciudad</b> (' + META_CIU + ' médicos) o <b>gira</b> (' + META_GIR +
       ') según el tipo de los médicos visitados ese día; sin visitas se asume ciudad. ' +
       'Farmacias: ' + META_FARM + ' por día.' +
