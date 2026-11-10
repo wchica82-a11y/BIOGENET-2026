@@ -628,6 +628,7 @@ textarea{resize:none;height:88px;line-height:1.5}
           </select>
           <input id="sa-zona" placeholder="Zona" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <input id="sa-cedula" placeholder="Cédula (obligatoria)" inputmode="numeric" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
+          <input id="sa-tel" type="tel" placeholder="Teléfono celular (obligatorio, 09...)" inputmode="numeric" maxlength="14" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <textarea id="sa-motivo" placeholder="Motivo del alta (opcional)" rows="2" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px;resize:vertical"></textarea>
         </div>
         <div style="display:flex;gap:8px;margin-top:.9rem">
@@ -2314,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-10-095804';
+const APP_VERSION = '2026-11-10-100147';
 
 async function checkForUpdates() {
   try {
@@ -3396,7 +3397,7 @@ function _solicRefresh(){
   Promise.all([loadPanelSolicitudes(), loadFarmSolicitudes()]).then(renderGerSolicitudes);
 }
 async function initGerSolicitudes(){
-  try { await Promise.all([loadPanelSolicitudes(), loadFarmSolicitudes()]); } catch(e){}
+  try { await Promise.all([loadPanelSolicitudes(), loadFarmSolicitudes(), loadMedTelefonos()]); } catch(e){}
   switchSolicTipo(GS_TIPO || 'medicos');
 }
 function _updateSolicBadge(){
@@ -3467,7 +3468,7 @@ function renderGerSolicitudes(){
       return '<div class="card" style="padding:12px 14px;margin-bottom:8px;border-left:4px solid '+col+'">'
         + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start;margin-bottom:6px">'
         +   '<div><b style="color:'+col+';font-size:13px">'+lbl+' MÉDICO — '+esc_(s.nombre)+'</b>'
-        +     '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">'+esc_((s.especialidad||'')+(s.provincia?' · '+s.provincia:'')+(s.ciudad?' · '+s.ciudad:'')+(s.tipo_medico?' · '+s.tipo_medico:'')+(s.zona?' · Zona '+s.zona:''))+(s.direccion?'<br>'+esc_(s.direccion):'')+(s.cedula?'<br>Cédula: '+esc_(s.cedula):'')+'</div>'
+        +     '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">'+esc_((s.especialidad||'')+(s.provincia?' · '+s.provincia:'')+(s.ciudad?' · '+s.ciudad:'')+(s.tipo_medico?' · '+s.tipo_medico:'')+(s.zona?' · Zona '+s.zona:''))+(s.direccion?'<br>'+esc_(s.direccion):'')+(s.cedula?'<br>Cédula: '+esc_(s.cedula):'')+(telMedico(s.nombre)?'<br>Teléfono: '+esc_(telMedico(s.nombre)):'')+'</div>'
         +   '</div>'
         +   '<span style="font-size:10.5px;color:#fff;background:'+estCol+';padding:3px 8px;border-radius:5px;font-weight:700;white-space:nowrap">'+estLbl+'</span>'
         + '</div>'
@@ -3958,6 +3959,11 @@ async function guardarTelMedico(inp){
   }
   inp.value = tel;
   if (tel === antes) return;
+  var ok = await _telGuardar(medico, tel);
+  if (typeof showToast === 'function') showToast(ok ? '✅ Teléfono guardado' : 'Sin conexión: el teléfono se guardará al sincronizar');
+}
+// Guarda en el dispositivo y en la nube; sin conexión queda pendiente para la próxima sincronización
+async function _telGuardar(medico, tel){
   if (tel) MED_TELEFONOS[medico] = tel; else delete MED_TELEFONOS[medico];
   _telGuardarCache();
   var pend = _telPend();
@@ -3965,11 +3971,11 @@ async function guardarTelMedico(inp){
     await _telPush(medico, tel);
     delete pend[medico];
     _telPendSet(pend);
-    if (typeof showToast === 'function') showToast('✅ Teléfono guardado');
+    return true;
   } catch(e){
     pend[medico] = tel;
     _telPendSet(pend);
-    if (typeof showToast === 'function') showToast('Sin conexión: el teléfono se guardará al sincronizar');
+    return false;
   }
 }
 // Si gerencia aprueba un cambio de nombre, el teléfono sigue al médico.
@@ -4255,7 +4261,8 @@ function _altaDupHTML(s){
 function openSolicitudAlta(){
   var m = document.getElementById('modal-alta-med');
   if (!m) return;
-  ['sa-apellidos','sa-nombres','sa-dir','sa-provincia','sa-ciudad','sa-zona','sa-cedula','sa-motivo'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  ['sa-apellidos','sa-nombres','sa-dir','sa-provincia','sa-ciudad','sa-zona','sa-cedula','sa-tel','sa-motivo'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('sa-tel').style.display = MED_TEL_OK ? '' : 'none';
   var e = document.getElementById('sa-esp'); if (e) e.value = '';
   var t = document.getElementById('sa-tipo'); if (t) t.value = 'CIU';
   m.style.display = 'flex';
@@ -4289,6 +4296,8 @@ async function submitSolicitudAlta(){
   };
   if (!data.cedula){ alert('La cédula es obligatoria: con ella se verifica que el médico no esté ya en el panel.'); return; }
   if (!_cedValida(data.cedula) && !confirm('La cédula ' + data.cedula + ' no es una cédula ecuatoriana válida. Revisa los dígitos.\n\nSi es el pasaporte de un médico extranjero, acepta para continuar.')) return;
+  var tel = document.getElementById('sa-tel').value.replace(/\D/g, '');
+  if (MED_TEL_OK && !/^09\d{8}$/.test(tel)){ alert('El teléfono celular es obligatorio: 10 dígitos que empiecen con 09.'); return; }
   // Lo descargado al iniciar sesión puede estar viejo (p. ej. altas ya rechazadas): se consulta de nuevo
   try { await loadPanelSolicitudes(); } catch(e){}
   var dup = _altaDuplicados(data, CU);
@@ -4304,6 +4313,7 @@ async function submitSolicitudAlta(){
   if (dup.parecido.length && !confirm('En tu panel hay un médico muy parecido:\n\n' + dup.parecido.map(function(h){ return h.nombre + (h.cedula ? '  ·  C.I. ' + h.cedula : ''); }).join('\n') + '\n\n¿Es un médico DISTINTO? Acepta solo si estás seguro.')) return;
   if (dup.otros.length && !confirm('Este médico ya está en el panel de: ' + dup.otros.map(function(h){ return h.rep; }).filter(function(r, i, a){ return a.indexOf(r) === i; }).join(', ') + '.\n\n¿Enviar la solicitud de todas formas?')) return;
   var ok = await submitSolicitud('alta', data);
+  if (ok && MED_TEL_OK) await _telGuardar(_telKey(nombreCompleto), tel);
   if (ok) closeSolicitudAlta();
 }
 // UI: solicitar baja (motivo obligatorio)
