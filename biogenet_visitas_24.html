@@ -566,7 +566,7 @@ textarea{resize:none;height:88px;line-height:1.5}
         <p style="font-size:11.5px;color:var(--t3);margin-bottom:.7rem">Completa los datos. La solicitud queda en espera de aprobación.</p>
         <div style="display:flex;flex-direction:column;gap:8px">
           <input id="saf-cod" placeholder="Código de la farmacia * (ej: FG136, BPG25)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
-          <input id="saf-pdv" placeholder="Nombre del PDV * (ej: FYBECA URDESA)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
+          <input id="saf-pdv" placeholder="Nombre del PDV * (ej: CRUZ AZUL URDESA, PHARMACYS GARZOTA)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <select id="saf-cadena" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px"></select>
           <input id="saf-ciudad" placeholder="Ciudad" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <input id="saf-dir" placeholder="Dirección" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
@@ -2315,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-10-113949';
+const APP_VERSION = '2026-11-10-115157';
 
 async function checkForUpdates() {
   try {
@@ -4534,7 +4534,7 @@ async function rechazarFarmSolicitud(id, quien){
 }
 
 // Cadenas que el representante puede elegir (no se escriben a mano)
-var FARM_CADENAS = ['911','CRESIO','CRUZ AZUL','DIFARE','ECONOMICAS','FARMAENLACE','FARMAMIA','FARMCORP','FYBECA','IBENPHARMA','KEYLA','PHARMACYS','SAN GREGORIO','SANA SANA','SANTA MARTHA','SU SALUD','SUPER ECONOMICA','VEGFARM','INDEPENDIENTE'];
+var FARM_CADENAS = ['911','CRESIO','DIFARE','FARMAENLACE','FARMAMIA','FARMCORP','FYBECA','IBENPHARMA','KEYLA','SAN GREGORIO','SANA SANA','SANTA MARTHA','SU SALUD','SUPER ECONOMICA','VEGFARM','INDEPENDIENTE'];
 function _farmCadenaOpts(conSinDefinir){
   return '<option value="">— Selecciona la cadena * —</option>'
     + FARM_CADENAS.map(function(c){ return '<option>'+c+'</option>'; }).join('')
