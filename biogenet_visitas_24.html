@@ -1952,6 +1952,7 @@ async function syncFromCloud(user){
       var unNom = await getCloudConfig('medicos_un_nombre');
       if (Array.isArray(unNom)) MED_UN_NOMBRE = unNom;
       await loadDiasNoLab();
+      await loadMedTelefonos();
       var cloudHistory = await getCloudConfig('cycles_history');
       if (cloudHistory && Array.isArray(cloudHistory)) {
         CYCLES_HISTORY = cloudHistory;
@@ -2313,7 +2314,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-10-085430';
+const APP_VERSION = '2026-11-10-095804';
 
 async function checkForUpdates() {
   try {
@@ -3193,6 +3194,7 @@ function initGerPaneles(){
     sel.value = prev;
   }
   renderGerPaneles();
+  loadMedTelefonos().then(renderGerPaneles);
 }
 function gpVerRep(rep){
   var sel = document.getElementById('gp-rep');
@@ -3237,7 +3239,7 @@ function _gpFilas(rep){
     filas = (PANEL[rep]||[]).map(function(m){
       var n = String(m.nombre||'').toUpperCase().trim();
       return {nombre:m.nombre||'', esp:m.especialidad||'', ciudad:m.ciudad||'', zona:m.zona||'', dir:m.direccion||'', tipo:m.tipo||'',
-              cedula:m.cedula||'', vis: !!V.med[n], ult: V.ult[n]||'', falta: medFaltantes(m)};
+              cedula:m.cedula||'', tel: telMedico(m.nombre), vis: !!V.med[n], ult: V.ult[n]||'', falta: medFaltantes(m)};
     });
   }
   filas = filas.filter(function(f){
@@ -3338,16 +3340,18 @@ function renderGerPaneles(){
     + _gpChip(P.filter(function(m){return m.tipo==='GIR';}).length+' gira','#8B5CF6')
     + _gpChip(vis+' visitados en el ciclo ('+(P.length?Math.round(vis/P.length*100):0)+'%)','#1A5C3A')
     + _gpChip(inc+' con datos incompletos','#C47A0A')
+    + (MED_TEL_OK ? _gpChip(P.filter(function(m){ return !!telMedico(m.nombre); }).length+' con teléfono','#1565C0') : '')
     + '<details style="margin-top:4px"><summary style="font-size:12px;color:var(--t2);cursor:pointer">Por especialidad ('+Object.keys(esp).length+')</summary><div style="font-size:11.5px;color:var(--t2);margin-top:6px;line-height:1.8">'
     + Object.keys(esp).sort(function(a,b){return esp[b]-esp[a];}).map(function(k){ return esc_(k)+': <b>'+esp[k]+'</b>'; }).join(' · ')+'</div></details></div>';
   lst.innerHTML = filas.length
     ? '<div style="font-size:12px;color:var(--t3);margin:0 0 6px">'+filas.length+' médicos</div>' + tabla(
-        '<th style="'+th+'">Médico</th><th style="'+th+'">Especialidad</th><th style="'+th+'">Ciudad / zona</th><th style="'+th+'">Tipo</th><th style="'+th+'">Cédula</th><th style="'+th+'">Última visita</th>',
+        '<th style="'+th+'">Médico</th><th style="'+th+'">Especialidad</th><th style="'+th+'">Ciudad / zona</th><th style="'+th+'">Tipo</th><th style="'+th+'">Cédula</th>'+(MED_TEL_OK?'<th style="'+th+'">Teléfono</th>':'')+'<th style="'+th+'">Última visita</th>',
         filas.map(function(f,i){
           return '<tr style="background:'+(i%2?'#FBFDFC':'#fff')+'"><td style="'+td+'"><b>'+esc_(f.nombre)+'</b><div style="font-size:11px;color:var(--t3)">'+esc_(f.dir)+'</div>'
             + (f.falta.length?'<div style="font-size:11px;color:#C47A0A;margin-top:2px">⚠️ Falta: '+esc_(f.falta.join(', '))+'</div>':'')+'</td>'
             + '<td style="'+td+'">'+esc_(f.esp)+'</td><td style="'+td+'">'+esc_(f.ciudad)+(f.zona?'<div style="font-size:11px;color:var(--t3)">'+esc_(f.zona)+'</div>':'')+'</td>'
             + '<td style="'+td+'">'+esc_(f.tipo)+'</td><td style="'+td+';font-family:monospace;font-size:11.5px">'+esc_(f.cedula||'—')+'</td>'
+            + (MED_TEL_OK ? '<td style="'+td+';font-family:monospace;font-size:11.5px;white-space:nowrap">'+esc_(f.tel||'—')+'</td>' : '')
             + '<td style="'+td+';white-space:nowrap">'+_gpUlt(f)+'</td></tr>';
         }).join(''))
     : '<div class="empty"><p>Sin médicos con ese filtro.</p></div>';
@@ -3361,7 +3365,7 @@ function exportGerPanel(){
     _gpFilas(r).filas.forEach(function(f){
       rows.push(vista === 'farm'
         ? {Visitador:r, Codigo:f.cod, Farmacia:f.nombre, Cadena:f.cadena, Ciudad:f.ciudad, Direccion:f.dir, Tipo:f.tipo, 'Ultima visita':f.ult, 'Visitada en ciclo':f.vis?'SI':'NO'}
-        : {Visitador:r, Medico:f.nombre, Especialidad:f.esp, Ciudad:f.ciudad, Zona:f.zona, Direccion:f.dir, Tipo:f.tipo, Cedula:f.cedula, 'Ultima visita':f.ult, 'Visitado en ciclo':f.vis?'SI':'NO', 'Datos faltantes':f.falta.join(', ')});
+        : {Visitador:r, Medico:f.nombre, Especialidad:f.esp, Ciudad:f.ciudad, Zona:f.zona, Direccion:f.dir, Tipo:f.tipo, Cedula:f.cedula, Telefono:f.tel, 'Ultima visita':f.ult, 'Visitado en ciclo':f.vis?'SI':'NO', 'Datos faltantes':f.falta.join(', ')});
     });
   });
   if (!rows.length){ alert('No hay filas para exportar con ese filtro.'); return; }
@@ -3899,6 +3903,84 @@ function medDebeCompletar(m){
   if (!medFaltantes(m).length) return false;
   return !_modPendiente(m.nombre);
 }
+// ── Teléfono celular de cada médico ──
+// El visitador lo escribe directo en su panel, sin solicitud. Se guarda por médico
+// (tabla medico_telefonos), así lo ven todos los que tienen a ese médico.
+// La columna solo aparece cuando la tabla ya existe en Supabase.
+var MED_TEL_OK = false, MED_TELEFONOS = {};
+try {
+  var _telCache = JSON.parse(localStorage.getItem('bg_med_tel') || 'null');
+  if (_telCache){ MED_TELEFONOS = _telCache; MED_TEL_OK = true; }
+} catch(e){}
+function _telKey(nombre){ return sinTildes(nombre).replace(/\s+/g, ' ').trim(); }
+function telMedico(nombre){ return MED_TELEFONOS[_telKey(nombre)] || ''; }
+function _telGuardarCache(){ try { localStorage.setItem('bg_med_tel', JSON.stringify(MED_TELEFONOS)); } catch(e){} }
+function _telPend(){ try { return JSON.parse(localStorage.getItem('bg_med_tel_pend') || '{}') || {}; } catch(e){ return {}; } }
+function _telPendSet(p){ try { localStorage.setItem('bg_med_tel_pend', JSON.stringify(p)); } catch(e){} }
+async function _telPush(medico, telefono){
+  var r = await fetch(SUPABASE_URL + '/rest/v1/medico_telefonos?on_conflict=medico', {
+    method: 'POST',
+    headers: { 'apikey':SUPABASE_KEY, 'Authorization':'Bearer '+SUPABASE_KEY,
+               'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
+    body: JSON.stringify({ medico: medico, telefono: telefono, actualizado_por: CU || '', updated_at: new Date().toISOString() })
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+async function loadMedTelefonos(){
+  try {
+    var mapa = {}, off = 0;
+    while (true) {
+      var rows = await sbRequest('GET', '/medico_telefonos?select=medico,telefono&order=medico.asc&limit=1000&offset=' + off);
+      (rows || []).forEach(function(r){ if (r.telefono) mapa[r.medico] = r.telefono; });
+      if (!rows || rows.length < 1000) break;
+      off += 1000;
+    }
+    // Los que no se pudieron guardar por falta de conexión se reintentan aquí
+    var pend = _telPend(), quedan = {};
+    for (var k in pend) {
+      try { await _telPush(k, pend[k]); } catch(e){ quedan[k] = pend[k]; }
+      if (pend[k]) mapa[k] = pend[k]; else delete mapa[k];
+    }
+    _telPendSet(quedan);
+    MED_TELEFONOS = mapa;
+    MED_TEL_OK = true;
+    _telGuardarCache();
+  } catch(e){ console.warn('loadMedTelefonos falló:', e.message); }
+}
+async function guardarTelMedico(inp){
+  var medico = _telKey(inp.dataset.med);
+  var tel = inp.value.replace(/\D/g, '');
+  var antes = MED_TELEFONOS[medico] || '';
+  if (tel && !/^09\d{8}$/.test(tel)){
+    alert('El celular debe tener 10 dígitos y empezar con 09.');
+    inp.value = antes;
+    return;
+  }
+  inp.value = tel;
+  if (tel === antes) return;
+  if (tel) MED_TELEFONOS[medico] = tel; else delete MED_TELEFONOS[medico];
+  _telGuardarCache();
+  var pend = _telPend();
+  try {
+    await _telPush(medico, tel);
+    delete pend[medico];
+    _telPendSet(pend);
+    if (typeof showToast === 'function') showToast('✅ Teléfono guardado');
+  } catch(e){
+    pend[medico] = tel;
+    _telPendSet(pend);
+    if (typeof showToast === 'function') showToast('Sin conexión: el teléfono se guardará al sincronizar');
+  }
+}
+// Si gerencia aprueba un cambio de nombre, el teléfono sigue al médico.
+// La fila vieja se deja porque otro visitador puede tenerlo aún con ese nombre.
+async function _copiarTelMedico(orig, nuevo){
+  var t = telMedico(orig);
+  if (!t || telMedico(nuevo)) return;
+  await _telPush(_telKey(nuevo), t);
+  MED_TELEFONOS[_telKey(nuevo)] = t;
+  _telGuardarCache();
+}
 function _medModBtn(m){
   var nomJs = (m.nombre||'').replace(/\\/g,'\\\\').replace(/'/g, "\\'");
   if (_modPendiente(m.nombre)) {
@@ -4072,6 +4154,7 @@ async function gerenteAprobarModificacion(s){
           await sbRequest('PATCH', '/ubicaciones?id=eq.' + ub[i].id, { nombre: nuevo, ref_id: ub[i].rep + '||' + nuevo });
         }
       } catch(e){ avisos.push('GPS: ' + e.message); }
+      try { await _copiarTelMedico(orig, nuevo); } catch(e){ avisos.push('teléfono: ' + e.message); }
       var oU = orig.toUpperCase();
       (visits||[]).forEach(function(v){ if (reps.indexOf(v.rep) >= 0 && String(v.medico||'').toUpperCase().trim() === oU) v.medico = nuevo; });
       (MARKETING_ASIGNACIONES||[]).forEach(function(a){ if (reps.indexOf(a.rep) >= 0 && String(a.medico||'').toUpperCase().trim() === oU) a.medico = nuevo; });
@@ -4976,6 +5059,7 @@ async function initMisPaneles(){
   try { if (Object.keys(REP_PAIRS||{}).length === 0) await loadRepPairs(); } catch(e){}
   try { await loadMarketingCampanas(); } catch(e){}
   try { await loadMarketingAsignaciones(); } catch(e){}
+  await loadMedTelefonos();
   pnlSwitch(PNL_MODE || 'medicos');
 }
 function _pnlHasGpsMed(rep, nombre){
@@ -5014,14 +5098,17 @@ function renderPanelList(){
       return (a.ciudad||'').localeCompare(b.ciudad||'') || (a.especialidad||'').localeCompare(b.especialidad||'') || (a.nombre||'').localeCompare(b.nombre||'');
     });
     var conGps = list.filter(function(m){ return !!_pnlHasGpsMed(CU, m.nombre); }).length;
-    if (info) info.innerHTML = '<b>'+list.length+'</b> médicos'+(qn?' (filtrados)':'')+' · <span style="color:#1A5C3A">'+conGps+'</span> con GPS';
+    var conTel = list.filter(function(m){ return !!telMedico(m.nombre); }).length;
+    if (info) info.innerHTML = '<b>'+list.length+'</b> médicos'+(qn?' (filtrados)':'')+' · <span style="color:#1A5C3A">'+conGps+'</span> con GPS'
+      + (MED_TEL_OK ? ' · <span style="color:#1565C0">'+conTel+'</span> con teléfono' : '');
     if (!list.length){ cont.innerHTML = '<div class="card"><p style="font-size:12.5px;color:var(--t3);text-align:center;padding:1rem">No hay médicos que coincidan.</p></div>'; return; }
-    var html = '<div class="card" style="padding:0;overflow:hidden">';
+    var html = '<div class="card" style="padding:0;overflow-x:auto">';
     html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
     html += '<thead><tr style="background:#F1F6F3">'
          + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Ciudad</th>'
          + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Esp.</th>'
          + '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Nombre / Dirección</th>'
+         + (MED_TEL_OK ? '<th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--t2);border-bottom:1px solid #E1EAE4">Teléfono</th>' : '')
          + '</tr></thead><tbody>';
     list.forEach(function(m, i){
       var u = _pnlHasGpsMed(CU, m.nombre);
@@ -5037,6 +5124,7 @@ function renderPanelList(){
            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top;white-space:nowrap">'+(m.especialidad||'-')+'</td>'
            +  '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top"><div style="font-weight:700;color:var(--t1)">'+(m.nombre||'')+'</div><div style="color:var(--t3);font-size:11.5px;margin-top:2px">'+(m.direccion||'<i>Sin dirección</i>')+'</div>'
            +  '<div class="pnl-acc">'+_pnlGpsBtn(u, m.nombre)+_medModBtn(m)+bajaBtn+'</div></td>'
+           +  (MED_TEL_OK ? '<td style="padding:8px 10px;border-bottom:1px solid #EEF3F0;vertical-align:top"><input type="tel" inputmode="numeric" maxlength="14" placeholder="09..." data-med="'+esc_(m.nombre)+'" value="'+esc_(telMedico(m.nombre))+'" onchange="guardarTelMedico(this)" style="width:112px;padding:6px 7px;border:1px solid #cbd5d0;border-radius:6px;font-family:var(--f);font-size:13px"></td>' : '')
            +  '</tr>';
     });
     html += '</tbody></table></div>';
