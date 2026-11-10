@@ -567,7 +567,7 @@ textarea{resize:none;height:88px;line-height:1.5}
         <div style="display:flex;flex-direction:column;gap:8px">
           <input id="saf-cod" placeholder="Código de la farmacia * (ej: FG136, BPG25)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <input id="saf-pdv" placeholder="Nombre del PDV * (ej: FYBECA URDESA)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
-          <input id="saf-cadena" placeholder="Cadena (ej: FYBECA, PHARMACYS, INDEPENDIENTE)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
+          <select id="saf-cadena" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px"></select>
           <input id="saf-ciudad" placeholder="Ciudad" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <input id="saf-dir" placeholder="Dirección" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
           <input id="saf-zona" placeholder="Zona (opcional)" style="padding:9px;border:1px solid #cbd5d0;border-radius:7px;font-family:var(--f);font-size:13px">
@@ -2315,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-10-100147';
+const APP_VERSION = '2026-11-10-113949';
 
 async function checkForUpdates() {
   try {
@@ -3508,7 +3508,7 @@ function renderGerSolicitudes(){
       return '<div class="card" style="padding:12px 14px;margin-bottom:8px;border-left:4px solid '+col+'">'
         + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start;margin-bottom:6px">'
         +   '<div><b style="color:'+col+';font-size:13px">'+lbl+' FARMACIA — '+esc_(s.pdv)+' <span style="color:var(--t3);font-weight:400">('+esc_(s.cod)+')</span></b>'
-        +     '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">'+esc_((s.cadena||'')+(s.ciudad?' · '+s.ciudad:'')+(s.zona?' · '+s.zona:''))+(s.direccion?'<br>'+esc_(s.direccion):'')+'</div>'
+        +     '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">'+(_farmSinCadena(s)?'<b style="color:#B45309">Cadena por definir</b> · ':'')+esc_((s.cadena||'')+(s.ciudad?' · '+s.ciudad:'')+(s.zona?' · '+s.zona:''))+(s.direccion?'<br>'+esc_(s.direccion):'')+'</div>'
         +   '</div>'
         +   '<span style="font-size:10.5px;color:#fff;background:'+estCol+';padding:3px 8px;border-radius:5px;font-weight:700;white-space:nowrap">'+estLbl+'</span>'
         + '</div>'
@@ -4533,19 +4533,40 @@ async function rechazarFarmSolicitud(id, quien){
   } catch(e){ alert('Error: '+e.message); }
 }
 
+// Cadenas que el representante puede elegir (no se escriben a mano)
+var FARM_CADENAS = ['911','CRESIO','CRUZ AZUL','DIFARE','ECONOMICAS','FARMAENLACE','FARMAMIA','FARMCORP','FYBECA','IBENPHARMA','KEYLA','PHARMACYS','SAN GREGORIO','SANA SANA','SANTA MARTHA','SU SALUD','SUPER ECONOMICA','VEGFARM','INDEPENDIENTE'];
+function _farmCadenaOpts(conSinDefinir){
+  return '<option value="">— Selecciona la cadena * —</option>'
+    + FARM_CADENAS.map(function(c){ return '<option>'+c+'</option>'; }).join('')
+    + (conSinDefinir ? '<option value="-">Todavía no sé (dejar en blanco)</option>' : '');
+}
+function _farmSinCadena(s){ return s.tipo==='alta' && s.estado==='pendiente_gerente' && !String(s.cadena||'').trim(); }
+async function guardarCadenaSolicitud(id, sel){
+  if (!sel.value) return;
+  try {
+    await sbRequest('PATCH', '/farmacia_solicitudes?id=eq.'+id+'&estado=eq.pendiente_gerente', { cadena: sel.value });
+    await loadFarmSolicitudes();
+    if (typeof showToast==='function') showToast('✅ Cadena guardada');
+  } catch(e){ alert('No se pudo guardar la cadena: '+e.message); }
+  renderMisFarmSolicitudes();
+}
+
 // UI modal alta farmacia
 function openSolicitudAltaFarm(){
   var m = document.getElementById('modal-alta-farm');
   if (!m) return;
+  document.getElementById('saf-cadena').innerHTML = _farmCadenaOpts(true);
   ['saf-cod','saf-pdv','saf-cadena','saf-ciudad','saf-dir','saf-zona','saf-motivo'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   m.style.display = 'flex';
 }
 function closeSolicitudAltaFarm(){ var m=document.getElementById('modal-alta-farm'); if (m) m.style.display='none'; }
 async function submitSolicitudAltaFarm(){
+  var cadenaSel = document.getElementById('saf-cadena').value;
+  if (!cadenaSel){ alert('Elige la cadena de la lista. Si todavía no sabes a cuál pertenece, elige "Todavía no sé".'); return; }
   var data = {
     cod:       document.getElementById('saf-cod').value,
     pdv:       document.getElementById('saf-pdv').value,
-    cadena:    document.getElementById('saf-cadena').value,
+    cadena:    cadenaSel === '-' ? '' : cadenaSel,
     ciudad:    document.getElementById('saf-ciudad').value,
     direccion: document.getElementById('saf-dir').value,
     zona:      document.getElementById('saf-zona').value,
@@ -4583,6 +4604,7 @@ function renderMisFarmSolicitudes(){
   if (!mias.length){ el.innerHTML = '<div style="font-size:12px;color:var(--t3);padding:.5rem 0">Sin solicitudes.</div>'; return; }
   var resueltasVisibles = mias.filter(function(s){ return s.estado==='aprobada' || s.estado==='rechazada'; }).length;
   var head = resueltasVisibles>0 ? '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button onclick="limpiarFarmSolicitudesLeidas()" style="padding:5px 10px;border-radius:6px;border:1px solid #cbd5d0;background:#fff;color:var(--t2);font-weight:600;font-size:11px;cursor:pointer;font-family:var(--f)">🧹 Limpiar leídas ('+resueltasVisibles+')</button></div>' : '';
+  mias = mias.filter(_farmSinCadena).concat(mias.filter(function(s){ return !_farmSinCadena(s); }));   // las que deben completar cadena van primero
   el.innerHTML = head + mias.slice(0,15).map(function(s){
     var estadoCol = {'pendiente_gerente':'#1565C0','aprobada':'#1A5C3A','rechazada':'#C0392B'}[s.estado] || '#666';
     var estadoLbl = {'pendiente_gerente':'En espera de aprobación','aprobada':'Aprobada','rechazada':'Rechazada'}[s.estado] || s.estado;
@@ -4590,6 +4612,7 @@ function renderMisFarmSolicitudes(){
     return '<div style="border:1px solid var(--b);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:#fff">'
       + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:12.5px">'+tipoLbl+' · '+esc_(s.pdv)+' <span style="color:var(--t3);font-weight:400">('+esc_(s.cod)+')</span></b><span style="font-size:10.5px;color:#fff;background:'+estadoCol+';padding:2px 7px;border-radius:5px;font-weight:700">'+estadoLbl+'</span></div>'
       + '<div style="font-size:11px;color:var(--t3);margin-top:3px">'+fmtShort(s.created_at.slice(0,10))+'</div>'
+      + (_farmSinCadena(s)?'<div style="margin-top:6px"><div style="font-size:11px;color:#B45309;font-weight:700;margin-bottom:3px">Falta la cadena: elígela cuando sepas a quién pertenece</div><select onchange="guardarCadenaSolicitud('+s.id+',this)" style="width:100%;padding:7px;border:1px solid #cbd5d0;border-radius:6px;font-family:var(--f);font-size:12.5px">'+_farmCadenaOpts(false)+'</select></div>':'')
       + (s.motivo?'<div style="font-size:11px;color:var(--t2);margin-top:3px"><i>'+esc_(s.motivo)+'</i></div>':'')
       + (s.rechazo_motivo?'<div style="font-size:11px;color:#C0392B;margin-top:3px"><b>Rechazo:</b> '+esc_(s.rechazo_motivo)+'</div>':'')
       + '</div>';
