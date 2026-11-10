@@ -2315,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-10-115157';
+const APP_VERSION = '2026-11-10-115627';
 
 async function checkForUpdates() {
   try {
@@ -4534,7 +4534,7 @@ async function rechazarFarmSolicitud(id, quien){
 }
 
 // Cadenas que el representante puede elegir (no se escriben a mano)
-var FARM_CADENAS = ['911','CRESIO','DIFARE','FARMAENLACE','FARMAMIA','FARMCORP','FYBECA','IBENPHARMA','KEYLA','SAN GREGORIO','SANA SANA','SANTA MARTHA','SU SALUD','SUPER ECONOMICA','VEGFARM','INDEPENDIENTE'];
+var FARM_CADENAS = ['911','CRESIO','DIFARE','FARMAENLACE','FARMCORP','FEMSA','IBENPHARMA','KEYLA','SANTA MARTHA','SU SALUD','SUPER ECONOMICA','VEGFARM','INDEPENDIENTE'];
 function _farmCadenaOpts(conSinDefinir){
   return '<option value="">— Selecciona la cadena * —</option>'
     + FARM_CADENAS.map(function(c){ return '<option>'+c+'</option>'; }).join('')
