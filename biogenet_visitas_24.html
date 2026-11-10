@@ -2313,7 +2313,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-10-085038';
+const APP_VERSION = '2026-11-10-085430';
 
 async function checkForUpdates() {
   try {
@@ -3856,7 +3856,8 @@ function medUnNombre(nombre){
 // Nombres de médicos en MAYÚSCULAS, sin tildes y con N en vez de Ñ (formato del panel)
 function sinTildes(t){ return String(t==null?'':t).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
 // "S/N", "NN", "XX"... escritos para pasar la validación en vez del dato real
-function _esRelleno(t){ return /(^|\s)(S\/?N|N\/?A|NN|X+|SIN|NINGUNO|NO TIENE)(\s|$)/.test(String(t||'').toUpperCase()); }
+function _esPalabraRelleno(p){ return /^(S[\/.\-]?N\.?|N[\/.\-]?[AN]\.?|X+|SIN|NO|NINGUNO|NINGUNA|[.\-_\/]+)$/.test(p); }
+function _esRelleno(t){ return _palabrasNombre(t).some(_esPalabraRelleno); }
 // Una letra o inicial sola ("GIANNA A", "DUARTE V.") no es un nombre ni un apellido.
 // Se respetan la "Y" entre apellidos y el apellido "DE LA A".
 function _palabrasNombre(t){ return sinTildes(t).trim().split(/\s+/).filter(Boolean); }
@@ -3868,7 +3869,7 @@ function _esLetraSuelta(p, i, todas){
   return true;
 }
 function _tieneLetraSuelta(t){ return _palabrasNombre(t).some(_esLetraSuelta); }
-function _cuentaPalabras(t){ return _palabrasNombre(t).filter(function(p, i, todas){ return !_esLetraSuelta(p, i, todas); }).length; }
+function _cuentaPalabras(t){ return _palabrasNombre(t).filter(function(p, i, todas){ return !_esLetraSuelta(p, i, todas) && !_esPalabraRelleno(p); }).length; }
 function medFaltantes(m){
   var f = [];
   if (_cedNorm(m.cedula).length !== 10) f.push('cédula');
