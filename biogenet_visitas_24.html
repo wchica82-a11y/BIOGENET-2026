@@ -2313,7 +2313,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-06-112354';
+const APP_VERSION = '2026-11-10-085038';
 
 async function checkForUpdates() {
   try {
@@ -3857,12 +3857,24 @@ function medUnNombre(nombre){
 function sinTildes(t){ return String(t==null?'':t).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
 // "S/N", "NN", "XX"... escritos para pasar la validación en vez del dato real
 function _esRelleno(t){ return /(^|\s)(S\/?N|N\/?A|NN|X+|SIN|NINGUNO|NO TIENE)(\s|$)/.test(String(t||'').toUpperCase()); }
+// Una letra o inicial sola ("GIANNA A", "DUARTE V.") no es un nombre ni un apellido.
+// Se respetan la "Y" entre apellidos y el apellido "DE LA A".
+function _palabrasNombre(t){ return sinTildes(t).trim().split(/\s+/).filter(Boolean); }
+function _esLetraSuelta(p, i, todas){
+  var l = p.replace(/\./g, '');
+  if (!/^[A-Z]$/.test(l)) return false;
+  if (l === 'Y' && p === 'Y' && i > 0 && i < todas.length - 1) return false;
+  if (l === 'A' && todas[i-1] === 'LA') return false;
+  return true;
+}
+function _tieneLetraSuelta(t){ return _palabrasNombre(t).some(_esLetraSuelta); }
+function _cuentaPalabras(t){ return _palabrasNombre(t).filter(function(p, i, todas){ return !_esLetraSuelta(p, i, todas); }).length; }
 function medFaltantes(m){
   var f = [];
   if (_cedNorm(m.cedula).length !== 10) f.push('cédula');
-  var pal = String(m.nombre||'').trim().split(/\s+/).length;
+  var pal = _cuentaPalabras(m.nombre);
   var nombreOk = medUnNombre(m.nombre) ? pal >= 3
-    : (m.apellidos && m.nombres) ? (String(m.apellidos).trim().split(/\s+/).length >= 2 && String(m.nombres).trim().split(/\s+/).length >= 2)
+    : (m.apellidos && m.nombres) ? (_cuentaPalabras(m.apellidos) >= 2 && _cuentaPalabras(m.nombres) >= 2)
     : pal >= 4;
   if (!nombreOk) f.push('2 apellidos y 2 nombres');
   if (String(m.direccion||'').trim().length < 15) f.push('dirección completa');
@@ -3964,6 +3976,7 @@ async function submitModMedico(){
   if (modo !== 'reporte' && !mot) return fail('Escribe el motivo del cambio.');
   // Rellenos como "S/N" no son datos
   if (_esRelleno(ape) || _esRelleno(nom)) return fail('No escribas "S/N" ni rellenos: escribe los apellidos y nombres reales del médico.');
+  if (_tieneLetraSuelta(ape) || _tieneLetraSuelta(nom)) return fail('No escribas letras sueltas ni iniciales: escribe los apellidos y nombres completos del médico.');
   if (ape.split(' ').length < 2) return fail('Escribe los 2 apellidos del médico.');
   if (nom.split(' ').length < 2 && !medUnNombre(m.nombre) && !medUnNombre(ape + ' ' + nom))
     return fail('Escribe los 2 nombres del médico. Si de verdad tiene un solo nombre, avisa a gerencia para registrarlo como excepción.');
@@ -4172,6 +4185,7 @@ async function submitSolicitudAlta(){
   if (!nombres){ alert('Los nombres son obligatorios (2 nombres).'); return; }
   if (!especialidad){ alert('La especialidad es obligatoria — selecciona una de la lista.'); return; }
   if (_esRelleno(apellidos) || _esRelleno(nombres)){ alert('No escribas "S/N" ni rellenos en apellidos o nombres. Si el médico solo tiene un nombre o un apellido, déjalo así.'); return; }
+  if (_tieneLetraSuelta(apellidos) || _tieneLetraSuelta(nombres)){ alert('No escribas letras sueltas ni iniciales: escribe los apellidos y nombres completos del médico.'); return; }
   // Validación suave: 2 palabras en cada campo
   if (apellidos.split(/\s+/).length < 2){ if (!confirm('Los apellidos parecen no tener 2 apellidos. ¿Continuar de todas formas?')) return; }
   if (nombres.split(/\s+/).length < 2){ if (!confirm('Los nombres parecen no tener 2 nombres. ¿Continuar de todas formas?')) return; }
