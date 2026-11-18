@@ -2315,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-18-093545';
+const APP_VERSION = '2026-11-18-102418';
 
 async function checkForUpdates() {
   try {
@@ -2798,6 +2798,7 @@ async function saveMuestraRecibida(){
       document.getElementById('mr-producto').value = '';
       setTimeout(function(){ sEl.innerHTML=''; }, 3000);
       renderMuestrasRecibidas();
+      cargarProdExtraRep();
       // Refrescar saldo si la vista de muestras está visible
       if (typeof renderMisMuestras === 'function') try { renderMisMuestras(); } catch(e){}
     } else {
@@ -3100,6 +3101,7 @@ async function doLogin(){
       document.getElementById('rep-linea-badge').textContent = (CYCLE?'Ciclo '+CYCLE.num+' · ':'')+(linea||'Sin línea');
       document.getElementById('prod-linea-label').textContent = '('+linea+')';
       buildProdChips(linea);
+      cargarProdExtraRep();
       buildMatChips();
       renderHist();
       // Cargar overrides/pares/solicitudes/marketing en background
@@ -3125,6 +3127,7 @@ async function doLogin(){
       document.getElementById('rep-linea-badge').textContent = (CYCLE?'Ciclo '+CYCLE.num+' · ':'')+(linea||'Sin línea');
       document.getElementById('prod-linea-label').textContent = '('+linea+')';
       buildProdChips(linea);
+      cargarProdExtraRep();
       buildMatChips();
       renderHist();
       // Cargar overrides/pares/solicitudes/marketing en background
@@ -5233,8 +5236,39 @@ function renderPanelList(){
 }
 
 // ── PRODUCT CHIPS ──
+// Productos fuera de la línea del rep que igual recibió como muestra en el ciclo
+// actual (ej: a JOHANNA VERA, L1, le llegó DOLITIL 25MG de L2). Se agregan al
+// final de la lista del registro de visita para que pueda reportar su entrega.
+var REP_PROD_EXTRA = [];
+function _prodsDeRep(linea){
+  var base = (PROD_LINEA[linea]||[]).slice();
+  var bU = base.map(function(p){ return String(p).toUpperCase().trim(); });
+  (REP_PROD_EXTRA||[]).forEach(function(p){
+    var u = String(p||'').toUpperCase().trim();
+    if (u && bU.indexOf(u) < 0){ base.push(p); bU.push(u); }
+  });
+  return base;
+}
+async function cargarProdExtraRep(){
+  if (!CU) return;
+  var cyc = (typeof getCycle==='function') ? getCycle() : null;
+  if (!cyc || !cyc.num) return;
+  try {
+    var rows = await sbRequest('GET', '/muestras_movimientos?select=producto,cantidad&rep=eq.' + encodeURIComponent(CU) + '&ciclo_num=eq.' + cyc.num);
+    var tot = {};
+    (rows||[]).forEach(function(r){ var p = String(r.producto||'').trim(); if (p) tot[p] = (tot[p]||0) + (Number(r.cantidad)||0); });
+    var linea = REP_LINEA[CU] || '';
+    var lin = (PROD_LINEA[linea]||[]).map(function(p){ return String(p).toUpperCase().trim(); });
+    var extra = Object.keys(tot).filter(function(p){ return tot[p] > 0 && lin.indexOf(p.toUpperCase()) < 0; }).sort();
+    if (JSON.stringify(extra) === JSON.stringify(REP_PROD_EXTRA)) return;
+    REP_PROD_EXTRA = extra;
+    // Solo reconstruir si no hay una visita a medio llenar (no perder lo marcado)
+    var marcado = document.querySelector('#prod-chips input[type=checkbox]:checked');
+    if (!marcado) buildProdChips(linea);
+  } catch(e){ console.warn('cargarProdExtraRep falló:', e.message); }
+}
 function buildProdChips(linea){
-  const prods=PROD_LINEA[linea]||[];
+  const prods=_prodsDeRep(linea);
   const el=document.getElementById('prod-chips');
   if(!prods.length){ el.innerHTML='<p style="font-size:13px;color:var(--t3)">No hay productos para esta línea.</p>'; return; }
   el.innerHTML=prods.map((p,i)=>`
@@ -6037,8 +6071,7 @@ var _modMaterialesList = [];
 
 function _getRepProdOptions(){
   var linea = REP_LINEA[CU] || '';
-  var prods = (typeof PROD_LINEA !== 'undefined' && PROD_LINEA[linea]) ? PROD_LINEA[linea] : [];
-  return prods;
+  return (typeof PROD_LINEA !== 'undefined') ? _prodsDeRep(linea) : [];
 }
 function _getRepMatOptions(){
   try {
