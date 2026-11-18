@@ -2315,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-18-083536';
+const APP_VERSION = '2026-11-18-093545';
 
 async function checkForUpdates() {
   try {
@@ -5374,9 +5374,28 @@ function renderObsequiosCard(){
   if (!card || !listEl) return;
   if (!selDoc){ card.style.display = 'none'; listEl.innerHTML = ''; return; }
   var pends = asignacionesPendientesPara(selDoc.nombre);
-  if (!pends.length){ card.style.display = 'none'; listEl.innerHTML = ''; return; }
+  // Obsequios ya entregados a este médico (por el rep o su compañero) en campañas activas:
+  // solo informativo, para que no se prometa ni entregue dos veces.
+  var medU = String(selDoc.nombre||'').toUpperCase().trim();
+  var actIds = _campanasActivas().map(function(c){ return c.id; });
+  var pareja = (typeof repYCompanero==='function') ? repYCompanero(CU) : [CU];
+  var ents = (MARKETING_ASIGNACIONES||[]).filter(function(a){
+    return a.estado === 'entregado' && actIds.indexOf(a.campana_id) >= 0
+      && pareja.indexOf(a.rep) >= 0 && String(a.medico||'').toUpperCase().trim() === medU;
+  });
+  if (!pends.length && !ents.length){ card.style.display = 'none'; listEl.innerHTML = ''; return; }
   card.style.display = '';
-  listEl.innerHTML = pends.map(function(a){
+  var entHtml = ents.map(function(a){
+    var camp = MARKETING_CAMPANAS.find(function(c){ return c.id === a.campana_id; });
+    var nombre = camp ? camp.nombre : ('Campaña #'+a.campana_id);
+    var f = a.fecha_entrega ? new Date(a.fecha_entrega+'T12:00:00').toLocaleDateString('es-EC',{day:'numeric',month:'short',year:'numeric'}) : '';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid #BBF7D0;border-radius:10px;background:#F0FDF4;margin-bottom:8px">'
+      + '<div style="font-size:18px">✅</div>'
+      + '<div style="flex:1"><div style="font-size:13.5px;font-weight:700;color:#1A5C3A">'+esc_(nombre)+' — ya entregado</div>'
+      + '<div style="font-size:11.5px;color:var(--t3);margin-top:2px">'+(f ? 'El '+esc_(f) : 'Fecha no registrada')+(a.rep !== CU ? ' · por '+esc_(a.rep) : '')+'</div></div>'
+      + '</div>';
+  }).join('');
+  listEl.innerHTML = entHtml + pends.map(function(a){
     var camp = MARKETING_CAMPANAS.find(function(c){ return c.id === a.campana_id; });
     var nombre = camp ? camp.nombre : ('Campaña #'+a.campana_id);
     var rowId = 'obseq-row-'+a.id;
