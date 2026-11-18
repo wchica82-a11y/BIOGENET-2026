@@ -2315,7 +2315,7 @@ async function validateRepAccess(rep) {
 // ═══════════════════════════════════════════════════════════
 // SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
 // ═══════════════════════════════════════════════════════════
-const APP_VERSION = '2026-11-16-112723';
+const APP_VERSION = '2026-11-18-083536';
 
 async function checkForUpdates() {
   try {
@@ -3832,6 +3832,20 @@ async function _gerenteAprobarSolicitud(id){
       source_solicitud: s.id
     };
     await sbRequest('POST', '/panel_overrides', override);
+    // Baja: el médico sale del panel de la pareja. Sus obsequios "seleccionados"
+    // (aún no entregados) se borran; si no, quedan como pendientes que el rep
+    // ya no puede ver ni entregar. Los entregados se conservan como historial.
+    if (s.tipo !== 'alta') {
+      try {
+        var repsB = repYCompanero(s.rep_solicita);
+        var inRepsB = encodeURIComponent('in.(' + repsB.map(function(r){ return '"' + r + '"'; }).join(',') + ')');
+        await sbRequest('DELETE', '/marketing_asignaciones?estado=eq.seleccionado&medico=eq.' + encodeURIComponent(String(s.nombre||'').trim()) + '&rep=' + inRepsB);
+        var nomB = String(s.nombre||'').toUpperCase().trim();
+        MARKETING_ASIGNACIONES = (MARKETING_ASIGNACIONES||[]).filter(function(a){
+          return !(a.estado === 'seleccionado' && repsB.indexOf(a.rep) >= 0 && String(a.medico||'').toUpperCase().trim() === nomB);
+        });
+      } catch(e){ console.warn('No se pudieron quitar obsequios pendientes:', e.message); }
+    }
     await sbRequest('PATCH', '/panel_solicitudes?id=eq.'+id, {
       estado: 'aprobada',
       gerente_aprobado_at: new Date().toISOString()
